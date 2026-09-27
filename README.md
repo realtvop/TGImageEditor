@@ -4,7 +4,7 @@ TGImageEditor is an offline, static-image Android editor based on the editor bou
 
 ## Features
 
-- Opens images through Android's document picker and normalizes every EXIF orientation.
+- Opens directly into a full-screen Nekogram-style local gallery grid, without a camera tile, and normalizes every EXIF orientation.
 - Non-destructive free crop, common aspect ratios, 90-degree rotation, mirror, and ±45-degree straightening.
 - Enhance, exposure, contrast, saturation, warmth, fade, highlights, shadows, vignette, grain, sharpen, skin softening, five-point luminance curve, and radial or linear focus blur.
 - Pen, marker, neon, blur brush, eraser, arrow, rectangle, and oval tools with color and width controls.
@@ -39,7 +39,9 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Rendering scope
 
-The app uses a deterministic CPU bitmap renderer so the committed preview and saved image share one edit document and render order. Telegram's original editor uses EGL/OpenGL and native enhancement code, so exact pixel parity and real-time performance are outside this extraction. Preview decoding is capped at 3840 pixels on the longest edge and export replay at 8192 pixels to bound memory use.
+The app uses a deterministic CPU bitmap renderer so the committed preview and saved image share one edit document and render order. Focus blur and the blur brush use Nekogram's fixed radius-8, sigma-3 separable Gaussian pass and the same aspect-ratio-aware `smoothstep` masks as `FilterShaders`. Paint strokes use the same brush spacing and stamp model as `Components/Paint/Render.java`; Canvas is the standalone compositing backend. Preview decoding is capped at 3840 pixels on the longest edge and export replay at 8192 pixels to bound memory use.
+
+The editor does not include Telegram's account, network, story, video, sticker, or custom-emoji dependencies. GPU EGL rendering and Telegram's native enhancement path are outside the static-image extraction boundary, so exact device-specific floating-point pixel parity is not promised.
 
 ## Licensing and provenance
 

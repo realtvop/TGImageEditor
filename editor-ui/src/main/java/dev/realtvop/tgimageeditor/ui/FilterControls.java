@@ -101,6 +101,11 @@ public final class FilterControls extends LinearLayout {
         select(selected == null ? tools.get(0) : selected);
     }
 
+    public void setState(FilterState state) {
+        this.state = state;
+        if (selected != null) select(selected);
+    }
+
     private void add(int label, Function<FilterState, Float> getter,
                      BiFunction<FilterState, Float, FilterState> updater, float min, float max) {
         Tool tool = new Tool(label, getter, updater, min, max);

@@ -473,6 +473,7 @@ public final class MainActivity extends Activity {
 
     private void scheduleFilterPreview(FilterState filter) {
         pendingFilter = filter;
+        filterControls.setState(filter);
         editorView.updateBlur(filter.blur());
         filterPreviewBitmap = null;
         doneButton.setEnabled(false);
