@@ -121,43 +121,138 @@ public final class FilterRenderer {
     private static Bitmap applyBlurEffects(Bitmap source, FilterState state) {
         if (state.softenSkin() <= 0f && state.blur().type() == BlurState.Type.NONE) return source;
         int width = source.getWidth(), height = source.getHeight();
-        Bitmap tiny = Bitmap.createScaledBitmap(source, Math.max(1, width / 18), Math.max(1, height / 18), true);
-        Bitmap blurred = Bitmap.createScaledBitmap(tiny, width, height, true);
-        tiny.recycle();
         Bitmap output = source.copy(Bitmap.Config.ARGB_8888, true);
-        Canvas canvas = new Canvas(output);
-        if (state.softenSkin() > 0f) {
-            Paint soften = new Paint(Paint.FILTER_BITMAP_FLAG);
-            soften.setAlpha(Math.round(state.softenSkin() * 90f));
-            canvas.drawBitmap(blurred, 0, 0, soften);
+        Bitmap blurred = null;
+        if (state.softenSkin() > 0f || state.blur().type() != BlurState.Type.NONE) {
+            blurred = gaussianBlur(source, 8, 3f);
         }
+        int[] sharpPixels = new int[width * height];
+        int[] blurPixels = blurred == null ? null : new int[width * height];
+        output.getPixels(sharpPixels, 0, width, 0, 0, width, height);
+        if (blurred != null) blurred.getPixels(blurPixels, 0, width, 0, 0, width, height);
         BlurState blur = state.blur();
-        if (blur.type() != BlurState.Type.NONE) {
-            Canvas blurCanvas = new Canvas(blurred);
-            Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG);
-            mask.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-            if (blur.type() == BlurState.Type.RADIAL) {
-                float radius = (float) Math.hypot(width, height);
-                float edge = Math.min(.99f, blur.size() + Math.max(.01f, blur.feather()));
-                mask.setShader(new RadialGradient(blur.centerX() * width, blur.centerY() * height, radius,
-                        new int[]{0x00000000, 0x00000000, 0xff000000},
-                        new float[]{0f, blur.size(), edge}, Shader.TileMode.CLAMP));
-            } else {
-                double angle = Math.toRadians(blur.angle());
-                float dx = (float) Math.cos(angle) * width;
-                float dy = (float) Math.sin(angle) * height;
-                float inner = Math.max(.01f, .5f - blur.size() * .5f);
-                float outer = Math.max(0f, inner - blur.feather() * .5f);
-                mask.setShader(new LinearGradient(width / 2f - dx, height / 2f - dy,
-                        width / 2f + dx, height / 2f + dy,
-                        new int[]{0xff000000, 0x00000000, 0x00000000, 0xff000000},
-                        new float[]{0f, outer, 1f - outer, 1f}, Shader.TileMode.CLAMP));
+        float aspect = height / (float) width;
+        float angle = (float) Math.toRadians(blur.angle());
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = y * width + x;
+                int sharp = sharpPixels[index];
+                int blurredColor = blurPixels == null ? sharp : blurPixels[index];
+                float blurMix = state.softenSkin() > 0f ? state.softenSkin() * .65f : 0f;
+                if (blur.type() != BlurState.Type.NONE) {
+                    // This is the same coordinate normalization used by Nekogram's
+                    // radialBlurFragmentShaderCode and linearBlurFragmentShaderCode.
+                    float tx = x / (float) Math.max(1, width - 1);
+                    float ty = y / (float) Math.max(1, height - 1) * aspect + .5f - .5f * aspect;
+                    float dx = tx - blur.centerX();
+                    float dy = ty - blur.centerY();
+                    float distance;
+                    if (blur.type() == BlurState.Type.RADIAL) {
+                        distance = (float) Math.hypot(dx, dy);
+                    } else {
+                        distance = Math.abs(dx * aspect * (float) Math.cos(angle) + dy * (float) Math.sin(angle));
+                    }
+                    blurMix = smoothstep(blur.size() - blur.feather(), blur.size(), distance);
+                }
+                if (blurMix > 0f) {
+                    sharpPixels[index] = mixColor(sharp, blurredColor, Math.min(1f, blurMix));
+                }
             }
-            blurCanvas.drawRect(0, 0, width, height, mask);
-            canvas.drawBitmap(blurred, 0, 0, null);
         }
-        blurred.recycle();
+        output.setPixels(sharpPixels, 0, width, 0, 0, width, height);
+        if (blurred != null) blurred.recycle();
         return output;
+    }
+
+    /** Separable Gaussian pass matching Nekogram's fixed radius-8, sigma-3 blur program. */
+    private static Bitmap gaussianBlur(Bitmap source, int radius, float sigma) {
+        int sourceWidth = source.getWidth();
+        int sourceHeight = source.getHeight();
+        float scale = Math.min(1f, 2048f / Math.max(sourceWidth, sourceHeight));
+        int width = Math.max(1, Math.round(sourceWidth * scale));
+        int height = Math.max(1, Math.round(sourceHeight * scale));
+        Bitmap working = source;
+        if (width != sourceWidth || height != sourceHeight) {
+            working = Bitmap.createScaledBitmap(source, width, height, true);
+        }
+        int[] input = new int[width * height];
+        int[] horizontal = new int[input.length];
+        int[] result = new int[input.length];
+        working.getPixels(input, 0, width, 0, 0, width, height);
+        float[] weights = gaussianWeights(radius, sigma);
+        for (int y = 0; y < height; y++) {
+            int row = y * width;
+            for (int x = 0; x < width; x++) {
+                float a = 0f, r = 0f, g = 0f, b = 0f;
+                for (int offset = -radius; offset <= radius; offset++) {
+                    int sampleX = Math.max(0, Math.min(width - 1, x + offset));
+                    int color = input[row + sampleX];
+                    float weight = weights[offset + radius];
+                    a += (color >>> 24) * weight;
+                    r += ((color >>> 16) & 255) * weight;
+                    g += ((color >>> 8) & 255) * weight;
+                    b += (color & 255) * weight;
+                }
+                horizontal[row + x] = argb(a, r, g, b);
+            }
+        }
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float a = 0f, r = 0f, g = 0f, b = 0f;
+                for (int offset = -radius; offset <= radius; offset++) {
+                    int sampleY = Math.max(0, Math.min(height - 1, y + offset));
+                    int color = horizontal[sampleY * width + x];
+                    float weight = weights[offset + radius];
+                    a += (color >>> 24) * weight;
+                    r += ((color >>> 16) & 255) * weight;
+                    g += ((color >>> 8) & 255) * weight;
+                    b += (color & 255) * weight;
+                }
+                result[y * width + x] = argb(a, r, g, b);
+            }
+        }
+        Bitmap blurred = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        blurred.setPixels(result, 0, width, 0, 0, width, height);
+        if (working != source) working.recycle();
+        if (width != sourceWidth || height != sourceHeight) {
+            Bitmap scaled = Bitmap.createScaledBitmap(blurred, sourceWidth, sourceHeight, true);
+            blurred.recycle();
+            return scaled;
+        }
+        return blurred;
+    }
+
+    private static float[] gaussianWeights(int radius, float sigma) {
+        float[] weights = new float[radius * 2 + 1];
+        float sum = 0f;
+        for (int i = 0; i <= radius; i++) {
+            float weight = (float) (Math.exp(-(i * i) / (2f * sigma * sigma))
+                    / Math.sqrt(2f * Math.PI * sigma * sigma));
+            weights[i + radius] = weight;
+            weights[radius - i] = weight;
+            sum += i == 0 ? weight : weight * 2f;
+        }
+        for (int i = 0; i < weights.length; i++) weights[i] /= sum;
+        return weights;
+    }
+
+    private static int mixColor(int sharp, int blur, float amount) {
+        int a = Math.round((sharp >>> 24) + (((blur >>> 24) & 255) - (sharp >>> 24)) * amount);
+        int r = Math.round(((sharp >>> 16) & 255) + (((blur >>> 16) & 255) - ((sharp >>> 16) & 255)) * amount);
+        int g = Math.round(((sharp >>> 8) & 255) + (((blur >>> 8) & 255) - ((sharp >>> 8) & 255)) * amount);
+        int b = Math.round((sharp & 255) + ((blur & 255) - (sharp & 255)) * amount);
+        return (clamp(a) << 24) | (clamp(r) << 16) | (clamp(g) << 8) | clamp(b);
+    }
+
+    private static int argb(float a, float r, float g, float b) {
+        return (clamp(Math.round(a)) << 24) | (clamp(Math.round(r)) << 16)
+                | (clamp(Math.round(g)) << 8) | clamp(Math.round(b));
+    }
+
+    private static float smoothstep(float edge0, float edge1, float value) {
+        if (edge0 == edge1) return value < edge0 ? 0f : 1f;
+        float t = Math.max(0f, Math.min(1f, (value - edge0) / (edge1 - edge0)));
+        return t * t * (3f - 2f * t);
     }
 
     private static int luma(int c) { return Math.round(((c >> 16 & 255) * .299f) + ((c >> 8 & 255) * .587f) + ((c & 255) * .114f)); }

@@ -104,7 +104,13 @@ public final class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 33) Api33Back.register(this);
         if (state != null) {
             EditDocument restored = restoreDocument(state.getString(STATE_DOCUMENT_PATH));
-            if (restored != null) loadImage(Uri.parse(restored.source().id()), restored);
+            if (restored != null) {
+                loadImage(Uri.parse(restored.source().id()), restored);
+            } else {
+                openImage();
+            }
+        } else {
+            openImage();
         }
     }
 
@@ -201,10 +207,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openImage() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("image/*");
-        startActivityForResult(intent, REQUEST_OPEN_IMAGE);
+        startActivityForResult(new Intent(this, GalleryPickerActivity.class), REQUEST_OPEN_IMAGE);
     }
 
     @Override

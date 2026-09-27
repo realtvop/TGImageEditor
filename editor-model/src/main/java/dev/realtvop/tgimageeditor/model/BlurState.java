@@ -2,7 +2,8 @@ package dev.realtvop.tgimageeditor.model;
 
 public final class BlurState implements java.io.Serializable {
     public enum Type { NONE, RADIAL, LINEAR }
-    public static final BlurState NONE = new BlurState(Type.NONE, .5f, .5f, .35f, .15f, 0f);
+    /** Nekogram's default linear blur axis is vertical (PI/2 radians). */
+    public static final BlurState NONE = new BlurState(Type.NONE, .5f, .5f, .35f, .15f, 90f);
     private final Type type;
     private final float centerX, centerY, size, feather, angle;
 

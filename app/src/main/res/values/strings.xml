@@ -22,4 +22,8 @@
     <string name="add_text_title">Add text</string>
     <string name="add_text_hint">Text</string>
     <string name="action_add">Add</string>
+    <string name="gallery_title">Gallery</string>
+    <string name="gallery_local_only">Photos</string>
+    <string name="gallery_empty">No photos found</string>
+    <string name="gallery_permission_required">Allow photo access to show your gallery</string>
 </resources>
