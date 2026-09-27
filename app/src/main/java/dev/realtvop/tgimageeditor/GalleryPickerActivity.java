@@ -13,6 +13,8 @@ import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Size;
 import android.view.Gravity;
@@ -29,6 +31,10 @@ import android.widget.AbsListView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import android.util.LruCache;
 
 /** Full-screen local photo picker modeled after Nekogram's gallery surface. */
 public final class GalleryPickerActivity extends Activity {
@@ -50,6 +56,14 @@ public final class GalleryPickerActivity extends Activity {
         } else {
             requestReadPermission();
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (grid != null && grid.getAdapter() instanceof PhotoAdapter) {
+            ((PhotoAdapter) grid.getAdapter()).shutdown();
+        }
+        super.onDestroy();
     }
 
     private View createContent() {
@@ -195,6 +209,14 @@ public final class GalleryPickerActivity extends Activity {
         private final Context context;
         private final List<Photo> items;
         private final int tileSize;
+        private final ExecutorService loader = Executors.newFixedThreadPool(2);
+        private final Handler main = new Handler(Looper.getMainLooper());
+        private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(8 * 1024) {
+            @Override
+            protected int sizeOf(String key, Bitmap value) {
+                return Math.max(1, value.getByteCount() / 1024);
+            }
+        };
 
         PhotoAdapter(Context context, List<Photo> items) {
             this.context = context;
@@ -213,8 +235,25 @@ public final class GalleryPickerActivity extends Activity {
             image.setScaleType(ImageView.ScaleType.CENTER_CROP);
             image.setBackground(new ColorDrawable(0xffdddddd));
             image.setLayoutParams(new AbsListView.LayoutParams(-1, tileSize));
-            image.setImageBitmap(loadThumbnail(items.get(position)));
+            Photo photo = items.get(position);
+            String key = photo.uri.toString();
+            image.setTag(key);
+            Bitmap cached = cache.get(key);
+            image.setImageBitmap(cached);
+            if (cached == null) {
+                loader.execute(() -> {
+                    Bitmap loaded = loadThumbnail(photo);
+                    if (loaded != null) cache.put(key, loaded);
+                    main.post(() -> {
+                        if (key.equals(image.getTag())) image.setImageBitmap(loaded);
+                    });
+                });
+            }
             return image;
+        }
+
+        void shutdown() {
+            loader.shutdownNow();
         }
 
         private Bitmap loadThumbnail(Photo photo) {

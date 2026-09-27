@@ -17,7 +17,7 @@ TGImageEditor is an offline, static-image Android editor based on the editor bou
 - `editor-model` contains immutable, serializable edit documents. It has no Android dependency.
 - `editor-engine` owns EXIF decoding, crop transforms, CPU adjustment rendering, paint/text compositing, and export.
 - `editor-ui` owns reusable crop, adjustment, paint, and entity interaction views.
-- `app` owns the document picker, history, lifecycle recovery, MediaStore, sharing, and the application shell.
+- `app` owns the full-screen gallery picker, history, lifecycle recovery, MediaStore, sharing, and the application shell.
 
 See [`docs/architecture.md`](docs/architecture.md) for the dependency rules, render order, and deliberately excluded Telegram features.
 
