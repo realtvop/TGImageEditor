@@ -19,5 +19,5 @@ android {
 dependencies {
     api project(':editor-model')
     implementation project(':editor-engine')
+    implementation project(':nekogram-core')
 }
-

@@ -6,8 +6,9 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
-import android.widget.SeekBar;
 import android.widget.TextView;
+
+import org.telegram.ui.Components.PhotoEditorSeekBar;
 
 import java.util.ArrayList;
 import java.util.function.BiFunction;
@@ -34,11 +35,10 @@ public final class FilterControls extends LinearLayout {
     private final ArrayList<Tool> tools = new ArrayList<>();
     private final LinearLayout toolRow;
     private final TextView selectedTitle;
-    private final SeekBar seek;
+    private final PhotoEditorSeekBar seek;
     private FilterState state = FilterState.NONE;
     private Consumer<FilterState> listener;
     private Tool selected;
-    private boolean binding;
 
     public FilterControls(Context context) {
         super(context);
@@ -55,17 +55,14 @@ public final class FilterControls extends LinearLayout {
         selectedTitle.setTextColor(Color.WHITE);
         selectedTitle.setGravity(Gravity.CENTER);
         addView(selectedTitle, new LayoutParams(LayoutParams.MATCH_PARENT, dp(28)));
-        seek = new SeekBar(context);
-        seek.setMax(200);
-        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                if (binding || !fromUser || selected == null) return;
-                float value = selected.min + (selected.max - selected.min) * progress / bar.getMax();
-                state = selected.updater.apply(state, value);
-                notifyChanged();
-            }
-            @Override public void onStartTrackingTouch(SeekBar bar) {}
-            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        seek = new PhotoEditorSeekBar(context);
+        seek.setTag(0);
+        seek.setMinMax(0, 200);
+        seek.setDelegate((id, progress) -> {
+            if (selected == null) return;
+            float value = selected.min + (selected.max - selected.min) * progress / 200f;
+            state = selected.updater.apply(state, value);
+            notifyChanged();
         });
         addView(seek, new LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
 
@@ -131,10 +128,8 @@ public final class FilterControls extends LinearLayout {
     private void select(Tool tool) {
         selected = tool;
         selectedTitle.setText(tool.label);
-        binding = true;
         float fraction = (tool.getter.apply(state) - tool.min) / (tool.max - tool.min);
-        seek.setProgress(Math.round(fraction * seek.getMax()));
-        binding = false;
+        seek.setProgress(Math.round(fraction * 200f), false);
     }
 
     private void notifyChanged() {
