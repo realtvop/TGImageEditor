@@ -23,4 +23,5 @@ android {
 dependencies {
     implementation project(':editor-ui')
     implementation project(':editor-engine')
+    implementation project(':nekogram-core')
 }

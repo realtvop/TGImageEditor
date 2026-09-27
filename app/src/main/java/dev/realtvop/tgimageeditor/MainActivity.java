@@ -51,6 +51,7 @@ import dev.realtvop.tgimageeditor.ui.EditorView;
 import dev.realtvop.tgimageeditor.ui.FilterControls;
 import dev.realtvop.tgimageeditor.ui.PaintControls;
 import dev.realtvop.tgimageeditor.ui.CropControls;
+import dev.realtvop.tgimageeditor.nekogram.NekogramActionBar;
 
 public final class MainActivity extends Activity {
     private static final String STATE_DOCUMENT_PATH = "editor_document_path";
@@ -62,8 +63,7 @@ public final class MainActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private EditorView editorView;
     private LinearLayout actions;
-    private Button openButton;
-    private Button saveButton;
+    private NekogramActionBar topBar;
     private Button shareButton;
     private Button cropButton;
     private Button filterButton;
@@ -147,11 +147,6 @@ public final class MainActivity extends Activity {
         actions.setPadding(dp(12), dp(8), dp(12), dp(8));
         actions.setBackgroundColor(0xff2b2b2f);
 
-        openButton = new Button(this);
-        openButton.setText(R.string.gallery_title);
-        styleAction(openButton);
-        openButton.setOnClickListener(v -> openImage());
-
         cropButton = actionButton(R.string.action_crop, v -> beginCrop());
         cropButton.setEnabled(false);
         actions.addView(cropButton);
@@ -172,13 +167,6 @@ public final class MainActivity extends Activity {
         documentRedoButton.setEnabled(false);
         actions.addView(documentRedoButton);
 
-        saveButton = new Button(this);
-        saveButton.setText(R.string.action_save_copy);
-        styleAction(saveButton);
-        saveButton.setEnabled(false);
-        saveButton.setOnClickListener(v -> saveCopy());
-        actions.addView(saveButton);
-
         shareButton = actionButton(R.string.action_share, v -> shareCopy());
         shareButton.setEnabled(false);
         actions.addView(shareButton);
@@ -195,17 +183,11 @@ public final class MainActivity extends Activity {
         actions.addView(undoButton);
         setToolActionsVisible(false);
 
-        LinearLayout topBar = new LinearLayout(this);
-        topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(dp(4), 0, dp(8), 0);
-        topBar.setBackgroundColor(0xff2b2b2f);
-        TextView title = new TextView(this);
-        title.setText(R.string.app_name);
-        title.setTextColor(0xffffffff);
-        title.setTextSize(20);
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1f));
-        topBar.addView(openButton, new LinearLayout.LayoutParams(dp(96), dp(56)));
+        topBar = new NekogramActionBar(this);
+        topBar.setTitle(getString(R.string.app_name));
+        topBar.setBackAction(v -> openImage());
+        topBar.setAction(getString(R.string.action_save_copy), v -> saveCopy());
+        topBar.setActionEnabled(false);
         root.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
 
         HorizontalScrollView actionScroller = new HorizontalScrollView(this);
@@ -259,11 +241,11 @@ public final class MainActivity extends Activity {
     private void loadImage(Uri uri, EditDocument restoredDocument) {
         historyRendering = true;
         updateHistoryButtons();
-        openButton.setEnabled(false);
+        topBar.setBackEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
-        saveButton.setEnabled(false);
+        topBar.setActionEnabled(false);
         shareButton.setEnabled(false);
         worker.execute(() -> {
             try {
@@ -285,8 +267,8 @@ public final class MainActivity extends Activity {
                     historyRendering = false;
                     renderedBitmap = restoredBitmap;
                     editorView.setBitmap(renderedBitmap);
-                    openButton.setEnabled(true);
-                    saveButton.setEnabled(true);
+                    topBar.setBackEnabled(true);
+                    topBar.setActionEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
@@ -348,8 +330,8 @@ public final class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_IMAGES);
             return;
         }
-        saveButton.setEnabled(false);
-        openButton.setEnabled(false);
+        topBar.setActionEnabled(false);
+        topBar.setBackEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
@@ -383,11 +365,11 @@ public final class MainActivity extends Activity {
                 Uri completedUri = outputUri;
                 runOnUiThread(() -> {
                     if (destroyed) return;
-                    openButton.setEnabled(true);
+                    topBar.setBackEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
-                    saveButton.setEnabled(true);
+                    topBar.setActionEnabled(true);
                     shareButton.setEnabled(true);
                     Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
                     if (share) launchShare(completedUri);
@@ -538,7 +520,7 @@ public final class MainActivity extends Activity {
 
     private void setToolActionsVisible(boolean editing) {
         int normalVisibility = editing ? View.GONE : View.VISIBLE;
-        for (int index = 0; index < 8; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        for (int index = 0; index < 6; index++) actions.getChildAt(index).setVisibility(normalVisibility);
         boolean crop = editing && activeTool == Tool.CROP;
         rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
         mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
@@ -648,11 +630,11 @@ public final class MainActivity extends Activity {
     }
 
     private void setNormalActionsEnabled(boolean enabled) {
-        openButton.setEnabled(enabled);
+        topBar.setBackEnabled(enabled);
         cropButton.setEnabled(enabled && bitmap != null);
         filterButton.setEnabled(enabled && bitmap != null);
         paintButton.setEnabled(enabled && bitmap != null);
-        saveButton.setEnabled(enabled && bitmap != null);
+        topBar.setActionEnabled(enabled && bitmap != null);
         shareButton.setEnabled(enabled && bitmap != null);
         updateHistoryButtons();
     }
@@ -711,11 +693,11 @@ public final class MainActivity extends Activity {
     private void showError(String message, Exception error) {
         runOnUiThread(() -> {
             if (destroyed) return;
-            openButton.setEnabled(true);
+            topBar.setBackEnabled(true);
             cropButton.setEnabled(bitmap != null);
             filterButton.setEnabled(bitmap != null);
             paintButton.setEnabled(bitmap != null);
-            saveButton.setEnabled(bitmap != null);
+            topBar.setActionEnabled(bitmap != null);
             shareButton.setEnabled(bitmap != null);
             Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });

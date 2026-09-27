@@ -36,6 +36,9 @@ import java.util.concurrent.Executors;
 
 import android.util.LruCache;
 
+import dev.realtvop.tgimageeditor.nekogram.NekogramActionBar;
+import dev.realtvop.tgimageeditor.nekogram.NekogramColors;
+
 /** Full-screen local photo picker modeled after Nekogram's gallery surface. */
 public final class GalleryPickerActivity extends Activity {
     private static final int REQUEST_READ_MEDIA = 300;
@@ -47,8 +50,8 @@ public final class GalleryPickerActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Window window = getWindow();
-        window.setStatusBarColor(Color.rgb(45, 45, 48));
-        window.setNavigationBarColor(Color.BLACK);
+        window.setStatusBarColor(NekogramColors.surface(this));
+        window.setNavigationBarColor(NekogramColors.surface(this));
         setTitle(getString(R.string.gallery_title));
         setContentView(createContent());
         if (hasReadPermission()) {
@@ -69,35 +72,17 @@ public final class GalleryPickerActivity extends Activity {
     private View createContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(245, 245, 245));
+        root.setBackgroundColor(NekogramColors.surface(this));
 
-        LinearLayout bar = new LinearLayout(this);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(4), 0, dp(8), 0);
-        bar.setBackgroundColor(Color.rgb(45, 45, 48));
-
-        TextView close = actionText(R.string.action_cancel);
-        close.setOnClickListener(v -> finish());
-        bar.addView(close, new LinearLayout.LayoutParams(dp(84), dp(56)));
-
-        TextView title = new TextView(this);
-        title.setText(R.string.gallery_title);
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(20);
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        bar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1f));
-
-        TextView count = new TextView(this);
-        count.setText(R.string.gallery_local_only);
-        count.setTextColor(0xffbdbdbd);
-        count.setTextSize(13);
-        count.setGravity(Gravity.CENTER_VERTICAL);
-        bar.addView(count, new LinearLayout.LayoutParams(dp(116), dp(56)));
+        NekogramActionBar bar = new NekogramActionBar(this);
+        bar.setTitle(getString(R.string.gallery_title));
+        bar.setBackAction(v -> finish());
+        bar.setAction("", null);
         root.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));
 
         FrameLayout content = new FrameLayout(this);
         grid = new GridView(this);
-        grid.setNumColumns(3);
+        grid.setNumColumns(4);
         grid.setHorizontalSpacing(dp(2));
         grid.setVerticalSpacing(dp(2));
         grid.setPadding(dp(2), dp(2), dp(2), dp(2));
@@ -109,24 +94,13 @@ public final class GalleryPickerActivity extends Activity {
 
         emptyView = new TextView(this);
         emptyView.setText(R.string.gallery_empty);
-        emptyView.setTextColor(0xff777777);
-        emptyView.setTextSize(16);
+        emptyView.setTextColor(NekogramColors.textSecondary(this));
+        emptyView.setTextSize(20);
         emptyView.setGravity(Gravity.CENTER);
         emptyView.setVisibility(View.GONE);
         content.addView(emptyView, new FrameLayout.LayoutParams(-1, -1));
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         return root;
-    }
-
-    private TextView actionText(int text) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(Color.WHITE);
-        view.setTextSize(15);
-        view.setGravity(Gravity.CENTER);
-        view.setAllCaps(false);
-        view.setBackgroundColor(Color.TRANSPARENT);
-        return view;
     }
 
     private boolean hasReadPermission() {
@@ -222,7 +196,7 @@ public final class GalleryPickerActivity extends Activity {
             this.context = context;
             this.items = items;
             int width = context.getResources().getDisplayMetrics().widthPixels;
-            tileSize = Math.max(1, (width - dp(context, 10)) / 3);
+            tileSize = Math.max(1, (width - dp(context, 10)) / 4);
         }
 
         @Override public int getCount() { return items.size(); }
@@ -233,7 +207,7 @@ public final class GalleryPickerActivity extends Activity {
         public View getView(int position, View convertView, ViewGroup parent) {
             ImageView image = convertView instanceof ImageView ? (ImageView) convertView : new ImageView(context);
             image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            image.setBackground(new ColorDrawable(0xffdddddd));
+            image.setBackground(new ColorDrawable(NekogramColors.surfaceContainer(context)));
             image.setLayoutParams(new AbsListView.LayoutParams(-1, tileSize));
             Photo photo = items.get(position);
             String key = photo.uri.toString();
