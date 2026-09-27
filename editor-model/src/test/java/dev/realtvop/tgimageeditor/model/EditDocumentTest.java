@@ -77,4 +77,21 @@ public class EditDocumentTest {
         assertEquals(4f, moved.scale(), .0001f);
         assertEquals(.5f, text.x(), .0001f);
     }
+
+    @Test
+    public void toneCurveMapsControlPoints() {
+        ToneCurve curve = ToneCurve.LINEAR.withMidtones(.75f);
+        assertEquals(191, curve.map(128), 2);
+        assertEquals(0, curve.map(0));
+        assertEquals(255, curve.map(255));
+    }
+
+    @Test
+    public void advancedFilterStateRemainsImmutable() {
+        FilterState changed = FilterState.NONE.withSharpen(.4f)
+                .withBlur(BlurState.NONE.withType(BlurState.Type.RADIAL));
+        assertTrue(FilterState.NONE.isIdentity());
+        assertEquals(.4f, changed.sharpen(), .0001f);
+        assertEquals(BlurState.Type.RADIAL, changed.blur().type());
+    }
 }

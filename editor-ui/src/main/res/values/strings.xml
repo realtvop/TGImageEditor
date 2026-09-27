@@ -7,4 +7,27 @@
     <string name="paint_rectangle">Rectangle</string>
     <string name="paint_oval">Oval</string>
     <string name="paint_text">Text</string>
+    <string name="filter_enhance">Enhance</string>
+    <string name="filter_skin">Skin</string>
+    <string name="filter_exposure">Exposure</string>
+    <string name="filter_contrast">Contrast</string>
+    <string name="filter_saturation">Saturation</string>
+    <string name="filter_warmth">Warmth</string>
+    <string name="filter_fade">Fade</string>
+    <string name="filter_highlights">Highlights</string>
+    <string name="filter_shadows">Shadows</string>
+    <string name="filter_vignette">Vignette</string>
+    <string name="filter_grain">Grain</string>
+    <string name="filter_sharpen">Sharpen</string>
+    <string name="filter_curve_blacks">Curve blacks</string>
+    <string name="filter_curve_shadows">Curve shadows</string>
+    <string name="filter_curve_midtones">Curve midtones</string>
+    <string name="filter_curve_highlights">Curve highlights</string>
+    <string name="filter_curve_whites">Curve whites</string>
+    <string name="filter_blur_size">Blur size</string>
+    <string name="filter_blur_feather">Blur feather</string>
+    <string name="filter_blur_angle">Blur angle</string>
+    <string name="filter_blur_off">Blur off</string>
+    <string name="filter_blur_radial">Radial blur</string>
+    <string name="filter_blur_linear">Linear blur</string>
 </resources>
