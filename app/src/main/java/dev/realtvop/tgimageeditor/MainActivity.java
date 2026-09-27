@@ -652,7 +652,7 @@ public final class MainActivity extends Activity {
     private static final class Api33Back {
         private Api33Back() {}
 
-        @android.annotation.TargetApi(33)
+        @android.annotation.SuppressLint({"NewApi", "InlinedApi"})
         static void register(MainActivity activity) {
             activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, activity::handleBack);
