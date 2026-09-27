@@ -72,6 +72,13 @@ public final class CropState {
                 quarterTurns, !mirrored);
     }
 
+    public CropState withFineRotation(float degrees) {
+        if (!Float.isFinite(degrees) || degrees < -45f || degrees > 45f) {
+            throw new IllegalArgumentException("Fine rotation must be in [-45, 45]");
+        }
+        return new CropState(centerX, centerY, width, height, degrees, quarterTurns, mirrored);
+    }
+
     public boolean isIdentity() {
         return centerX == 0.5f && centerY == 0.5f && width == 1f && height == 1f
                 && fineRotationDegrees == 0f && quarterTurns == 0 && !mirrored;

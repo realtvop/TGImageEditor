@@ -43,6 +43,10 @@ public final class EditorView extends FrameLayout {
         cropOverlay.setCrop(crop);
     }
 
+    public void setCropAspectRatio(float ratio) {
+        cropOverlay.setAspectRatio(ratio);
+    }
+
     public void endCrop() {
         cropOverlay.setVisibility(GONE);
     }

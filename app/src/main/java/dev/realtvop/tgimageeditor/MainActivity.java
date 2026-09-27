@@ -41,6 +41,7 @@ import dev.realtvop.tgimageeditor.model.TextEntity;
 import dev.realtvop.tgimageeditor.ui.EditorView;
 import dev.realtvop.tgimageeditor.ui.FilterControls;
 import dev.realtvop.tgimageeditor.ui.PaintControls;
+import dev.realtvop.tgimageeditor.ui.CropControls;
 
 public final class MainActivity extends Activity {
     private enum Tool { NONE, CROP, FILTER, PAINT }
@@ -73,6 +74,7 @@ public final class MainActivity extends Activity {
     private Bitmap paintBaseBitmap;
     private FilterControls filterControls;
     private PaintControls paintControls;
+    private CropControls cropControls;
     private Tool activeTool = Tool.NONE;
     private int filterGeneration;
     private final Runnable renderFilter = this::enqueueFilterPreview;
@@ -101,6 +103,12 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         paintParams.bottomMargin = dp(64);
         root.addView(paintControls, paintParams);
+
+        cropControls = new CropControls(this);
+        cropControls.setVisibility(View.GONE);
+        FrameLayout.LayoutParams cropParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        cropParams.bottomMargin = dp(64);
+        root.addView(cropControls, cropParams);
 
         actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -261,14 +269,23 @@ public final class MainActivity extends Activity {
         pendingCrop = document.crop();
         activeTool = Tool.CROP;
         showCropSurface();
-        editorView.beginCrop(pendingCrop, crop -> pendingCrop = crop);
+        editorView.beginCrop(pendingCrop, this::onCropBoundsChanged);
+        float originalRatio = (float) cropSurfaceBitmap.getWidth() / cropSurfaceBitmap.getHeight();
+        cropControls.bind(pendingCrop, originalRatio, this::updateCrop, editorView::setCropAspectRatio);
+        cropControls.setVisibility(View.VISIBLE);
         setToolActionsVisible(true);
     }
 
     private void updateCrop(CropState crop) {
         pendingCrop = crop;
+        cropControls.setState(crop);
         showCropSurface();
         editorView.updateCrop(pendingCrop);
+    }
+
+    private void onCropBoundsChanged(CropState crop) {
+        pendingCrop = crop;
+        cropControls.setState(crop);
     }
 
     private void showCropSurface() {
@@ -282,6 +299,7 @@ public final class MainActivity extends Activity {
 
     private void finishCrop(boolean apply) {
         editorView.endCrop();
+        cropControls.setVisibility(View.GONE);
         if (apply) {
             document = document.withCrop(pendingCrop);
             Bitmap next = ImagePipeline.render(bitmap, document);

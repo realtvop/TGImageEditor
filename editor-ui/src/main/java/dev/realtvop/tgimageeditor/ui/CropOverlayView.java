@@ -36,6 +36,7 @@ final class CropOverlayView extends View {
     private int dragMode;
     private float lastX;
     private float lastY;
+    private float aspectRatio;
 
     CropOverlayView(Context context) {
         super(context);
@@ -61,6 +62,23 @@ final class CropOverlayView extends View {
     void setCrop(CropState crop) {
         this.crop = crop;
         invalidate();
+    }
+
+    void setAspectRatio(float ratio) {
+        aspectRatio = ratio;
+        if (ratio > 0f) {
+            float normalizedRatio = ratio * bitmapHeight / bitmapWidth;
+            float width = 1f;
+            float height = width / normalizedRatio;
+            if (height > 1f) {
+                height = 1f;
+                width = height * normalizedRatio;
+            }
+            crop = crop.withBounds((1f - width) / 2f, (1f - height) / 2f,
+                    (1f + width) / 2f, (1f + height) / 2f);
+            if (listener != null) listener.onCropChanged(crop);
+            invalidate();
+        }
     }
 
     @Override
@@ -147,6 +165,19 @@ final class CropOverlayView extends View {
             if ((dragMode & RIGHT) != 0) right = clamp(right + dx, left + MIN_SIZE, 1f);
             if ((dragMode & TOP) != 0) top = clamp(top + dy, 0f, bottom - MIN_SIZE);
             if ((dragMode & BOTTOM) != 0) bottom = clamp(bottom + dy, top + MIN_SIZE, 1f);
+            if (aspectRatio > 0f) {
+                float normalizedRatio = aspectRatio * bitmapHeight / bitmapWidth;
+                float cx = (left + right) / 2f;
+                float cy = (top + bottom) / 2f;
+                float width = right - left;
+                float height = bottom - top;
+                if (width / height > normalizedRatio) width = height * normalizedRatio;
+                else height = width / normalizedRatio;
+                width = Math.min(width, 2f * Math.min(cx, 1f - cx));
+                height = Math.min(height, 2f * Math.min(cy, 1f - cy));
+                left = cx - width / 2f; right = cx + width / 2f;
+                top = cy - height / 2f; bottom = cy + height / 2f;
+            }
         }
         crop = crop.withBounds(left, top, right, bottom);
         if (listener != null) listener.onCropChanged(crop);
@@ -161,4 +192,3 @@ final class CropOverlayView extends View {
         return value * getResources().getDisplayMetrics().density;
     }
 }
-
