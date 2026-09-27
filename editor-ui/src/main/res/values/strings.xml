@@ -2,6 +2,7 @@
     <string name="paint_pen">Pen</string>
     <string name="paint_marker">Marker</string>
     <string name="paint_neon">Neon</string>
+    <string name="paint_blur">Blur</string>
     <string name="paint_eraser">Eraser</string>
     <string name="paint_arrow">Arrow</string>
     <string name="paint_rectangle">Rectangle</string>

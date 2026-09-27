@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class PaintStroke implements java.io.Serializable {
-    public enum Kind { PEN, MARKER, NEON, ERASER, ARROW, RECTANGLE, OVAL }
+    public enum Kind { PEN, MARKER, NEON, BLUR, ERASER, ARROW, RECTANGLE, OVAL }
 
     private final List<PaintPoint> points;
     private final int color;

@@ -2,11 +2,14 @@ package dev.realtvop.tgimageeditor.engine;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.BitmapShader;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
+import android.graphics.Shader;
 
 import java.util.List;
 
@@ -27,8 +30,17 @@ public final class PaintRenderer {
         Bitmap overlay = Bitmap.createBitmap(output.getWidth(), output.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(overlay);
         float scale = Math.min(output.getWidth(), output.getHeight());
-        for (PaintStroke stroke : strokes) drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
+        Bitmap blurred = null;
+        for (PaintStroke stroke : strokes) {
+            if (stroke.kind() == PaintStroke.Kind.BLUR) {
+                if (blurred == null) blurred = createBlurredCopy(source, 1024);
+                drawBlurStroke(canvas, stroke, blurred, output.getWidth(), output.getHeight(), scale);
+            } else {
+                drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
+            }
+        }
         new Canvas(output).drawBitmap(overlay, 0, 0, null);
+        if (blurred != null) blurred.recycle();
         overlay.recycle();
         Canvas outputCanvas = new Canvas(output);
         for (TextEntity entity : textEntities) {
@@ -57,23 +69,7 @@ public final class PaintRenderer {
             drawShape(canvas, stroke, paint, width, height);
             return;
         }
-        Path path = new Path();
-        PaintPoint first = points.get(0);
-        path.moveTo(first.x() * width, first.y() * height);
-        if (points.size() == 1) {
-            path.lineTo(first.x() * width + .01f, first.y() * height + .01f);
-        } else {
-            for (int i = 1; i < points.size(); i++) {
-                PaintPoint previous = points.get(i - 1);
-                PaintPoint point = points.get(i);
-                float x = point.x() * width;
-                float y = point.y() * height;
-                path.quadTo(previous.x() * width, previous.y() * height,
-                        (previous.x() * width + x) / 2f, (previous.y() * height + y) / 2f);
-            }
-            PaintPoint last = points.get(points.size() - 1);
-            path.lineTo(last.x() * width, last.y() * height);
-        }
+        Path path = strokePath(points, width, height);
         if (stroke.kind() == PaintStroke.Kind.NEON) {
             Paint glow = new Paint(paint);
             glow.setAlpha(90);
@@ -83,6 +79,55 @@ public final class PaintRenderer {
             paint.setStrokeWidth(Math.max(1f, paint.getStrokeWidth() * .35f));
         }
         canvas.drawPath(path, paint);
+    }
+
+    public static void drawBlurStroke(Canvas canvas, PaintStroke stroke, Bitmap blurred,
+                                      float width, float height, float widthScale) {
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG | Paint.FILTER_BITMAP_FLAG);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setStrokeJoin(Paint.Join.ROUND);
+        paint.setStrokeWidth(stroke.width() * widthScale * 1.8f);
+        BitmapShader shader = new BitmapShader(blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        Matrix matrix = new Matrix();
+        matrix.setScale(width / blurred.getWidth(), height / blurred.getHeight());
+        shader.setLocalMatrix(matrix);
+        paint.setShader(shader);
+        canvas.drawPath(strokePath(stroke.points(), width, height), paint);
+    }
+
+    public static Bitmap createBlurredCopy(Bitmap source, int maximumDimension) {
+        float fit = Math.min(1f, maximumDimension / (float) Math.max(source.getWidth(), source.getHeight()));
+        int fittedWidth = Math.max(1, Math.round(source.getWidth() * fit));
+        int fittedHeight = Math.max(1, Math.round(source.getHeight() * fit));
+        Bitmap fitted = Bitmap.createScaledBitmap(source, fittedWidth, fittedHeight, true);
+        Bitmap tiny = Bitmap.createScaledBitmap(fitted, Math.max(1, fittedWidth / 18),
+                Math.max(1, fittedHeight / 18), true);
+        Bitmap blurred = Bitmap.createScaledBitmap(tiny, fittedWidth, fittedHeight, true);
+        if (fitted != source) fitted.recycle();
+        tiny.recycle();
+        return blurred;
+    }
+
+    private static Path strokePath(List<PaintPoint> points, float width, float height) {
+        Path path = new Path();
+        PaintPoint first = points.get(0);
+        path.moveTo(first.x() * width, first.y() * height);
+        if (points.size() == 1) {
+            path.lineTo(first.x() * width + .01f, first.y() * height + .01f);
+            return path;
+        }
+        for (int i = 1; i < points.size(); i++) {
+            PaintPoint previous = points.get(i - 1);
+            PaintPoint point = points.get(i);
+            float x = point.x() * width;
+            float y = point.y() * height;
+            path.quadTo(previous.x() * width, previous.y() * height,
+                    (previous.x() * width + x) / 2f, (previous.y() * height + y) / 2f);
+        }
+        PaintPoint last = points.get(points.size() - 1);
+        path.lineTo(last.x() * width, last.y() * height);
+        return path;
     }
 
     private static void drawShape(Canvas canvas, PaintStroke stroke, Paint paint, float width, float height) {

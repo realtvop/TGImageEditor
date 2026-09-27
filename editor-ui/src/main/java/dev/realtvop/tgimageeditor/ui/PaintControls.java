@@ -44,6 +44,7 @@ public final class PaintControls extends LinearLayout {
         addTool(tools, R.string.paint_pen, PaintStroke.Kind.PEN);
         addTool(tools, R.string.paint_marker, PaintStroke.Kind.MARKER);
         addTool(tools, R.string.paint_neon, PaintStroke.Kind.NEON);
+        addTool(tools, R.string.paint_blur, PaintStroke.Kind.BLUR);
         addTool(tools, R.string.paint_eraser, PaintStroke.Kind.ERASER);
         addTool(tools, R.string.paint_arrow, PaintStroke.Kind.ARROW);
         addTool(tools, R.string.paint_rectangle, PaintStroke.Kind.RECTANGLE);

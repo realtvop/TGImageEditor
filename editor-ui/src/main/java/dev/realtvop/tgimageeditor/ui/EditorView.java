@@ -51,13 +51,12 @@ public final class EditorView extends FrameLayout {
         cropOverlay.setVisibility(GONE);
     }
 
-    public void beginPaint(java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke> strokes,
+    public void beginPaint(Bitmap base, java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke> strokes,
                            java.util.List<dev.realtvop.tgimageeditor.model.TextEntity> entities,
                            java.util.function.BiConsumer<java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke>,
                                    java.util.List<dev.realtvop.tgimageeditor.model.TextEntity>> listener) {
         if (imageView.getDrawable() == null) return;
-        paintOverlay.bind(imageView.getDrawable().getIntrinsicWidth(), imageView.getDrawable().getIntrinsicHeight(),
-                strokes, entities, listener::accept);
+        paintOverlay.bind(base, strokes, entities, listener::accept);
         paintOverlay.setVisibility(VISIBLE);
     }
 
@@ -75,5 +74,6 @@ public final class EditorView extends FrameLayout {
 
     public void endPaint() {
         paintOverlay.setVisibility(GONE);
+        paintOverlay.release();
     }
 }

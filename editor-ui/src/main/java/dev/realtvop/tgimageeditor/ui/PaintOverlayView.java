@@ -2,6 +2,7 @@ package dev.realtvop.tgimageeditor.ui;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.RectF;
 import android.view.MotionEvent;
@@ -38,14 +39,17 @@ final class PaintOverlayView extends View {
     private float initialDistance;
     private float initialAngle;
     private TextEntity initialEntity;
+    private Bitmap blurredPreview;
 
     PaintOverlayView(Context context) {
         super(context);
     }
 
-    void bind(int width, int height, List<PaintStroke> value, List<TextEntity> entities, Listener listener) {
-        bitmapWidth = Math.max(1, width);
-        bitmapHeight = Math.max(1, height);
+    void bind(Bitmap base, List<PaintStroke> value, List<TextEntity> entities, Listener listener) {
+        bitmapWidth = Math.max(1, base.getWidth());
+        bitmapHeight = Math.max(1, base.getHeight());
+        releaseBlurredPreview();
+        blurredPreview = PaintRenderer.createBlurredCopy(base, 640);
         strokes.clear();
         strokes.addAll(value);
         textEntities.clear();
@@ -93,12 +97,10 @@ final class PaintOverlayView extends View {
         canvas.clipRect(imageBounds);
         canvas.translate(imageBounds.left, imageBounds.top);
         for (PaintStroke stroke : strokes) {
-            PaintRenderer.drawStroke(canvas, stroke, imageBounds.width(), imageBounds.height(),
-                    Math.min(imageBounds.width(), imageBounds.height()));
+            drawStroke(canvas, stroke);
         }
         if (!activePoints.isEmpty()) {
-            PaintRenderer.drawStroke(canvas, new PaintStroke(activePoints, brushColor, brushWidth, brushKind),
-                    imageBounds.width(), imageBounds.height(), Math.min(imageBounds.width(), imageBounds.height()));
+            drawStroke(canvas, new PaintStroke(activePoints, brushColor, brushWidth, brushKind));
         }
         for (int i = 0; i < textEntities.size(); i++) {
             TextEntity entity = textEntities.get(i);
@@ -112,6 +114,28 @@ final class PaintOverlayView extends View {
             }
         }
         canvas.restore();
+    }
+
+    void release() {
+        activePoints.clear();
+        releaseBlurredPreview();
+    }
+
+    private void drawStroke(Canvas canvas, PaintStroke stroke) {
+        if (stroke.kind() == PaintStroke.Kind.BLUR && blurredPreview != null) {
+            PaintRenderer.drawBlurStroke(canvas, stroke, blurredPreview, imageBounds.width(), imageBounds.height(),
+                    Math.min(imageBounds.width(), imageBounds.height()));
+        } else {
+            PaintRenderer.drawStroke(canvas, stroke, imageBounds.width(), imageBounds.height(),
+                    Math.min(imageBounds.width(), imageBounds.height()));
+        }
+    }
+
+    private void releaseBlurredPreview() {
+        if (blurredPreview != null) {
+            blurredPreview.recycle();
+            blurredPreview = null;
+        }
     }
 
     @Override

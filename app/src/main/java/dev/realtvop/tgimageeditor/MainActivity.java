@@ -452,7 +452,7 @@ public final class MainActivity extends Activity {
         pendingText = new ArrayList<>(document.textEntities());
         paintBaseBitmap = ImagePipeline.renderBase(bitmap, document);
         editorView.setBitmap(paintBaseBitmap);
-        editorView.beginPaint(pendingPaint, pendingText, (strokes, entities) -> {
+        editorView.beginPaint(paintBaseBitmap, pendingPaint, pendingText, (strokes, entities) -> {
             pendingPaint = strokes;
             pendingText = entities;
         });
