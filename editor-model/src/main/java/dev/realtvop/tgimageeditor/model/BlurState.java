@@ -26,6 +26,9 @@ public final class BlurState implements java.io.Serializable {
     public float feather() { return feather; }
     public float angle() { return angle; }
     public BlurState withType(Type v) { return new BlurState(v, centerX, centerY, size, feather, angle); }
+    public BlurState withCenter(float x, float y) { return new BlurState(type, x, y, size, feather, angle); }
+    public BlurState withCenterX(float x) { return new BlurState(type, x, centerY, size, feather, angle); }
+    public BlurState withCenterY(float y) { return new BlurState(type, centerX, y, size, feather, angle); }
     public BlurState withSize(float v) { return new BlurState(type, centerX, centerY, v, feather, angle); }
     public BlurState withFeather(float v) { return new BlurState(type, centerX, centerY, size, v, angle); }
     public BlurState withAngle(float v) { return new BlurState(type, centerX, centerY, size, feather, v); }

@@ -166,9 +166,19 @@ public final class FilterRenderer {
 
     /** Separable Gaussian pass matching Nekogram's fixed radius-8, sigma-3 blur program. */
     private static Bitmap gaussianBlur(Bitmap source, int radius, float sigma) {
+        return gaussianBlur(source, radius, sigma, 2048);
+    }
+
+    /** Shared by the focus filter and the painting blurer. */
+    public static Bitmap gaussianBlurCopy(Bitmap source, int maximumDimension) {
+        if (source == null || source.isRecycled()) throw new IllegalArgumentException("Source bitmap is unavailable");
+        return gaussianBlur(source, 8, 3f, Math.max(256, maximumDimension));
+    }
+
+    private static Bitmap gaussianBlur(Bitmap source, int radius, float sigma, int maximumDimension) {
         int sourceWidth = source.getWidth();
         int sourceHeight = source.getHeight();
-        float scale = Math.min(1f, 2048f / Math.max(sourceWidth, sourceHeight));
+        float scale = Math.min(1f, maximumDimension / (float) Math.max(sourceWidth, sourceHeight));
         int width = Math.max(1, Math.round(sourceWidth * scale));
         int height = Math.max(1, Math.round(sourceHeight * scale));
         Bitmap working = source;

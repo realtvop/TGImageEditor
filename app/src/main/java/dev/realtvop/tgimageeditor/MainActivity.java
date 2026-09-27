@@ -466,12 +466,14 @@ public final class MainActivity extends Activity {
         filterBaseBitmap = CropRenderer.render(bitmap, document.crop());
         filterPreviewBitmap = renderedBitmap;
         filterControls.bind(pendingFilter, this::scheduleFilterPreview);
+        editorView.beginBlur(pendingFilter.blur(), blur -> scheduleFilterPreview(pendingFilter.withBlur(blur)));
         filterControls.setVisibility(View.VISIBLE);
         setToolActionsVisible(true);
     }
 
     private void scheduleFilterPreview(FilterState filter) {
         pendingFilter = filter;
+        editorView.updateBlur(filter.blur());
         filterPreviewBitmap = null;
         doneButton.setEnabled(false);
         filterGeneration++;
@@ -507,6 +509,7 @@ public final class MainActivity extends Activity {
         mainHandler.removeCallbacks(renderFilter);
         filterGeneration++;
         filterControls.setVisibility(View.GONE);
+        editorView.endBlur();
         if (apply && filterPreviewBitmap != null) {
             acceptDocument(document.withFilter(pendingFilter), filterPreviewBitmap);
         } else {

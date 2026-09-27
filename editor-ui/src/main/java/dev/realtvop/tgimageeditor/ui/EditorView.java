@@ -12,6 +12,7 @@ public final class EditorView extends FrameLayout {
     private final ImageView imageView;
     private final CropOverlayView cropOverlay;
     private final PaintOverlayView paintOverlay;
+    private final BlurOverlayView blurOverlay;
 
     public EditorView(Context context) {
         super(context);
@@ -25,11 +26,16 @@ public final class EditorView extends FrameLayout {
         paintOverlay = new PaintOverlayView(context);
         paintOverlay.setVisibility(GONE);
         addView(paintOverlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        blurOverlay = new BlurOverlayView(context);
+        addView(blurOverlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
 
     public void setBitmap(Bitmap bitmap) {
         imageView.setImageBitmap(bitmap);
-        if (bitmap != null) cropOverlay.setBitmapSize(bitmap.getWidth(), bitmap.getHeight());
+        if (bitmap != null) {
+            cropOverlay.setBitmapSize(bitmap.getWidth(), bitmap.getHeight());
+            blurOverlay.setBitmapSize(bitmap.getWidth(), bitmap.getHeight());
+        }
     }
 
     public void beginCrop(dev.realtvop.tgimageeditor.model.CropState crop,
@@ -49,6 +55,19 @@ public final class EditorView extends FrameLayout {
 
     public void endCrop() {
         cropOverlay.setVisibility(GONE);
+    }
+
+    public void beginBlur(dev.realtvop.tgimageeditor.model.BlurState blur,
+                          java.util.function.Consumer<dev.realtvop.tgimageeditor.model.BlurState> listener) {
+        blurOverlay.bind(blur, listener);
+    }
+
+    public void updateBlur(dev.realtvop.tgimageeditor.model.BlurState blur) {
+        blurOverlay.setState(blur);
+    }
+
+    public void endBlur() {
+        blurOverlay.release();
     }
 
     public void beginPaint(Bitmap base, java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke> strokes,

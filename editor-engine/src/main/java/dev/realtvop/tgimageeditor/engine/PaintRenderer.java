@@ -97,16 +97,7 @@ public final class PaintRenderer {
     }
 
     public static Bitmap createBlurredCopy(Bitmap source, int maximumDimension) {
-        float fit = Math.min(1f, maximumDimension / (float) Math.max(source.getWidth(), source.getHeight()));
-        int fittedWidth = Math.max(1, Math.round(source.getWidth() * fit));
-        int fittedHeight = Math.max(1, Math.round(source.getHeight() * fit));
-        Bitmap fitted = Bitmap.createScaledBitmap(source, fittedWidth, fittedHeight, true);
-        Bitmap tiny = Bitmap.createScaledBitmap(fitted, Math.max(1, fittedWidth / 18),
-                Math.max(1, fittedHeight / 18), true);
-        Bitmap blurred = Bitmap.createScaledBitmap(tiny, fittedWidth, fittedHeight, true);
-        if (fitted != source) fitted.recycle();
-        tiny.recycle();
-        return blurred;
+        return FilterRenderer.gaussianBlurCopy(source, maximumDimension);
     }
 
     private static Path strokePath(List<PaintPoint> points, float width, float height) {
