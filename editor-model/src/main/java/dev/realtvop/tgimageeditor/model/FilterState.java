@@ -1,6 +1,6 @@
 package dev.realtvop.tgimageeditor.model;
 
-public final class FilterState {
+public final class FilterState implements java.io.Serializable {
     public static final FilterState NONE = new FilterState(0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, ToneCurve.LINEAR, BlurState.NONE);
     private final float enhance, exposure, contrast, saturation, warmth, fade;

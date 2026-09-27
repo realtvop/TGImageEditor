@@ -2,7 +2,7 @@ package dev.realtvop.tgimageeditor.model;
 
 import java.util.Objects;
 
-public final class TextEntity {
+public final class TextEntity implements java.io.Serializable {
     public enum Style { PLAIN, OUTLINE, FRAME }
 
     private final String text;
@@ -49,4 +49,3 @@ public final class TextEntity {
                 size, Math.max(.25f, Math.min(4f, scale)), rotation, color, style);
     }
 }
-

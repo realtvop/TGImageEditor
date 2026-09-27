@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class PaintStroke {
+public final class PaintStroke implements java.io.Serializable {
     public enum Kind { PEN, MARKER, NEON, ERASER, ARROW, RECTANGLE, OVAL }
 
     private final List<PaintPoint> points;

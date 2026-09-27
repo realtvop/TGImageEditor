@@ -6,7 +6,7 @@ import java.util.Collections;
 import java.util.List;
 
 /** Immutable snapshot shared by editor tools and export. */
-public final class EditDocument {
+public final class EditDocument implements java.io.Serializable {
     private final SourceImage source;
     private final CropState crop;
     private final FilterState filter;

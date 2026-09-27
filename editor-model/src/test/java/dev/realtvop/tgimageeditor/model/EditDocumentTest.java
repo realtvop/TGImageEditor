@@ -6,6 +6,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.Arrays;
 
 public class EditDocumentTest {
@@ -93,5 +97,33 @@ public class EditDocumentTest {
         assertTrue(FilterState.NONE.isIdentity());
         assertEquals(.4f, changed.sharpen(), .0001f);
         assertEquals(BlurState.Type.RADIAL, changed.blur().type());
+    }
+
+    @Test
+    public void documentCanRoundTripThroughSavedInstanceStateSerialization() throws Exception {
+        EditDocument original = EditDocument.create(new SourceImage("content://image", 800, 600))
+                .withCrop(CropState.FULL_IMAGE.withBounds(.1f, .2f, .9f, .8f))
+                .withFilter(FilterState.NONE.withExposure(.25f))
+                .withDrawing(
+                        Arrays.asList(new PaintStroke(
+                                Arrays.asList(new PaintPoint(.2f, .3f), new PaintPoint(.4f, .5f)),
+                                0xff336699, .03f, PaintStroke.Kind.NEON)),
+                        Arrays.asList(new TextEntity("Saved", .5f, .4f, .08f, 1.2f, 15f,
+                                0xffffffff, TextEntity.Style.FRAME)));
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream output = new ObjectOutputStream(bytes)) {
+            output.writeObject(original);
+        }
+        EditDocument restored;
+        try (ObjectInputStream input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
+            restored = (EditDocument) input.readObject();
+        }
+
+        assertEquals(original.source().id(), restored.source().id());
+        assertEquals(.1f, restored.crop().left(), .0001f);
+        assertEquals(.25f, restored.filter().exposure(), .0001f);
+        assertEquals(PaintStroke.Kind.NEON, restored.paintStrokes().get(0).kind());
+        assertEquals("Saved", restored.textEntities().get(0).text());
     }
 }

@@ -1,7 +1,7 @@
 package dev.realtvop.tgimageeditor.model;
 
 /** Crop geometry normalized within the source after mirror and rotation are applied. */
-public final class CropState {
+public final class CropState implements java.io.Serializable {
     public static final CropState FULL_IMAGE = new CropState(0.5f, 0.5f, 1f, 1f, 0f, 0, false);
 
     private final float centerX;

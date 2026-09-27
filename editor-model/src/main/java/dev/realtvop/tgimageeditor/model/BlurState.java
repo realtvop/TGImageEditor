@@ -1,6 +1,6 @@
 package dev.realtvop.tgimageeditor.model;
 
-public final class BlurState {
+public final class BlurState implements java.io.Serializable {
     public enum Type { NONE, RADIAL, LINEAR }
     public static final BlurState NONE = new BlurState(Type.NONE, .5f, .5f, .35f, .15f, 0f);
     private final Type type;
@@ -29,4 +29,3 @@ public final class BlurState {
     public BlurState withFeather(float v) { return new BlurState(type, centerX, centerY, size, v, angle); }
     public BlurState withAngle(float v) { return new BlurState(type, centerX, centerY, size, feather, v); }
 }
-

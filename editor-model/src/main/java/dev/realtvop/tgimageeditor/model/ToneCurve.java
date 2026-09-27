@@ -1,7 +1,7 @@
 package dev.realtvop.tgimageeditor.model;
 
 /** Five-point luminance curve matching Telegram's 0/25/50/75/100 control layout. */
-public final class ToneCurve {
+public final class ToneCurve implements java.io.Serializable {
     public static final ToneCurve LINEAR = new ToneCurve(0f, .25f, .5f, .75f, 1f);
     private final float blacks, shadows, midtones, highlights, whites;
 
@@ -36,4 +36,3 @@ public final class ToneCurve {
         return Math.max(0, Math.min(255, Math.round((y[segment] + (y[segment + 1] - y[segment]) * t) * 255f)));
     }
 }
-

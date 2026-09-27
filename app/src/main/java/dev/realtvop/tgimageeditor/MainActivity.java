@@ -44,6 +44,7 @@ import dev.realtvop.tgimageeditor.ui.PaintControls;
 import dev.realtvop.tgimageeditor.ui.CropControls;
 
 public final class MainActivity extends Activity {
+    private static final String STATE_DOCUMENT = "editor_document";
     private enum Tool { NONE, CROP, FILTER, PAINT }
     private static final int REQUEST_OPEN_IMAGE = 100;
     private static final int REQUEST_WRITE_IMAGES = 101;
@@ -83,6 +84,11 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(createContent());
+        if (state != null) {
+            @SuppressWarnings("deprecation")
+            EditDocument restored = (EditDocument) state.getSerializable(STATE_DOCUMENT);
+            if (restored != null) loadImage(Uri.parse(restored.source().id()), restored);
+        }
     }
 
     private View createContent() {
@@ -184,6 +190,10 @@ public final class MainActivity extends Activity {
     }
 
     private void loadImage(Uri uri) {
+        loadImage(uri, null);
+    }
+
+    private void loadImage(Uri uri, EditDocument restoredDocument) {
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
@@ -192,12 +202,14 @@ public final class MainActivity extends Activity {
         worker.execute(() -> {
             try {
                 DecodedImage image = ImageDecoder.decode(getContentResolver(), uri, 3840);
+                Bitmap restoredBitmap = restoredDocument == null
+                        ? image.bitmap() : ImagePipeline.render(image.bitmap(), restoredDocument);
                 runOnUiThread(() -> {
                     Bitmap previous = bitmap;
                     Bitmap previousRendered = renderedBitmap;
                     bitmap = image.bitmap();
-                    document = image.document();
-                    renderedBitmap = bitmap;
+                    document = restoredDocument == null ? image.document() : restoredDocument;
+                    renderedBitmap = restoredBitmap;
                     editorView.setBitmap(renderedBitmap);
                     openButton.setEnabled(true);
                     saveButton.setEnabled(true);
@@ -213,6 +225,12 @@ public final class MainActivity extends Activity {
                 showError(getString(R.string.error_open_image), error);
             }
         });
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (document != null) outState.putSerializable(STATE_DOCUMENT, document);
     }
 
     private void saveCopy() {

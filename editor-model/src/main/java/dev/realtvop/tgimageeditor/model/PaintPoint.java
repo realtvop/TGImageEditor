@@ -1,6 +1,6 @@
 package dev.realtvop.tgimageeditor.model;
 
-public final class PaintPoint {
+public final class PaintPoint implements java.io.Serializable {
     private final float x;
     private final float y;
 
@@ -15,4 +15,3 @@ public final class PaintPoint {
     public float x() { return x; }
     public float y() { return y; }
 }
-

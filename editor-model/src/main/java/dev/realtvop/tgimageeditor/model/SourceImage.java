@@ -3,7 +3,7 @@ package dev.realtvop.tgimageeditor.model;
 import java.util.Objects;
 
 /** Metadata for the orientation-normalized source bitmap used by the editor. */
-public final class SourceImage {
+public final class SourceImage implements java.io.Serializable {
     private final String id;
     private final int width;
     private final int height;
@@ -29,4 +29,3 @@ public final class SourceImage {
         return height;
     }
 }
-
