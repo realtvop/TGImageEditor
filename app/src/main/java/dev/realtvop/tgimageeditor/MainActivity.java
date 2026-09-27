@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ContentValues;
+import android.content.ClipData;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
@@ -56,6 +57,7 @@ public final class MainActivity extends Activity {
     private LinearLayout actions;
     private Button openButton;
     private Button saveButton;
+    private Button shareButton;
     private Button cropButton;
     private Button filterButton;
     private Button paintButton;
@@ -86,6 +88,7 @@ public final class MainActivity extends Activity {
     private final ArrayDeque<EditDocument> undoHistory = new ArrayDeque<>();
     private final ArrayDeque<EditDocument> redoHistory = new ArrayDeque<>();
     private boolean historyRendering;
+    private boolean shareAfterPermission;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -159,6 +162,10 @@ public final class MainActivity extends Activity {
         saveButton.setOnClickListener(v -> saveCopy());
         actions.addView(saveButton);
 
+        shareButton = actionButton(R.string.action_share, v -> shareCopy());
+        shareButton.setEnabled(false);
+        actions.addView(shareButton);
+
         rotateButton = actionButton(R.string.action_rotate, v -> updateCrop(pendingCrop.rotateClockwise()));
         mirrorButton = actionButton(R.string.action_mirror, v -> updateCrop(pendingCrop.toggleMirror()));
         cancelButton = actionButton(R.string.action_cancel, v -> finishTool(false));
@@ -219,6 +226,7 @@ public final class MainActivity extends Activity {
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
         saveButton.setEnabled(false);
+        shareButton.setEnabled(false);
         worker.execute(() -> {
             try {
                 DecodedImage image = ImageDecoder.decode(getContentResolver(), uri, 3840);
@@ -239,6 +247,7 @@ public final class MainActivity extends Activity {
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
+                    shareButton.setEnabled(true);
                     updateHistoryButtons();
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
@@ -259,9 +268,18 @@ public final class MainActivity extends Activity {
     }
 
     private void saveCopy() {
+        exportCopy(false);
+    }
+
+    private void shareCopy() {
+        exportCopy(true);
+    }
+
+    private void exportCopy(boolean share) {
         if (renderedBitmap == null || document == null) return;
         if (android.os.Build.VERSION.SDK_INT < 29
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            shareAfterPermission = share;
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_IMAGES);
             return;
         }
@@ -270,6 +288,7 @@ public final class MainActivity extends Activity {
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
+        shareButton.setEnabled(false);
         EditDocument snapshot = document;
         worker.execute(() -> {
             Uri outputUri = null;
@@ -296,13 +315,16 @@ public final class MainActivity extends Activity {
                     values.put(MediaStore.Images.Media.IS_PENDING, 0);
                     getContentResolver().update(outputUri, values, null, null);
                 }
+                Uri completedUri = outputUri;
                 runOnUiThread(() -> {
                     openButton.setEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
                     saveButton.setEnabled(true);
+                    shareButton.setEnabled(true);
                     Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
+                    if (share) launchShare(completedUri);
                 });
             } catch (Exception error) {
                 if (outputUri != null) getContentResolver().delete(outputUri, null, null);
@@ -312,6 +334,15 @@ public final class MainActivity extends Activity {
                 if (source != null) source.recycle();
             }
         });
+    }
+
+    private void launchShare(Uri uri) {
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("image/jpeg");
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        send.setClipData(ClipData.newRawUri(getString(R.string.app_name), uri));
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, getString(R.string.share_chooser_title)));
     }
 
     private void beginCrop() {
@@ -435,7 +466,7 @@ public final class MainActivity extends Activity {
 
     private void setToolActionsVisible(boolean editing) {
         int normalVisibility = editing ? View.GONE : View.VISIBLE;
-        for (int index = 0; index < 7; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        for (int index = 0; index < 8; index++) actions.getChildAt(index).setVisibility(normalVisibility);
         boolean crop = editing && activeTool == Tool.CROP;
         rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
         mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
@@ -545,6 +576,7 @@ public final class MainActivity extends Activity {
         filterButton.setEnabled(enabled && bitmap != null);
         paintButton.setEnabled(enabled && bitmap != null);
         saveButton.setEnabled(enabled && bitmap != null);
+        shareButton.setEnabled(enabled && bitmap != null);
         updateHistoryButtons();
     }
 
@@ -559,8 +591,11 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_WRITE_IMAGES && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            saveCopy();
+            boolean share = shareAfterPermission;
+            shareAfterPermission = false;
+            exportCopy(share);
         } else if (requestCode == REQUEST_WRITE_IMAGES) {
+            shareAfterPermission = false;
             Toast.makeText(this, R.string.storage_permission_required, Toast.LENGTH_LONG).show();
         }
     }
@@ -572,6 +607,7 @@ public final class MainActivity extends Activity {
             filterButton.setEnabled(bitmap != null);
             paintButton.setEnabled(bitmap != null);
             saveButton.setEnabled(bitmap != null);
+            shareButton.setEnabled(bitmap != null);
             Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });
     }

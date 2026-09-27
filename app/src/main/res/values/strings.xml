@@ -5,6 +5,7 @@
     <string name="action_adjust">Adjust</string>
     <string name="action_draw">Draw</string>
     <string name="action_save_copy">Save copy</string>
+    <string name="action_share">Share</string>
     <string name="action_rotate">Rotate</string>
     <string name="action_mirror">Mirror</string>
     <string name="action_cancel">Cancel</string>
@@ -12,6 +13,7 @@
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
     <string name="saved_message">Saved to Pictures/TGImageEditor</string>
+    <string name="share_chooser_title">Share edited image</string>
     <string name="storage_permission_required">Storage permission is required to save a copy</string>
     <string name="error_with_reason">%1$s: %2$s</string>
     <string name="error_open_image">Unable to open image</string>
