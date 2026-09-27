@@ -16,6 +16,7 @@ import java.util.List;
 import dev.realtvop.tgimageeditor.model.PaintPoint;
 import dev.realtvop.tgimageeditor.model.PaintStroke;
 import dev.realtvop.tgimageeditor.model.TextEntity;
+import org.telegram.ui.Components.Paint.NekogramPaintPipeline;
 
 public final class PaintRenderer {
     private PaintRenderer() {}
@@ -26,27 +27,25 @@ public final class PaintRenderer {
 
     public static Bitmap render(Bitmap source, List<PaintStroke> strokes, List<TextEntity> textEntities) {
         if (strokes.isEmpty() && textEntities.isEmpty()) return source;
-        Bitmap output = source.copy(Bitmap.Config.ARGB_8888, true);
-        Bitmap overlay = Bitmap.createBitmap(output.getWidth(), output.getHeight(), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(overlay);
+        Bitmap painted = NekogramPaintPipeline.render(source, strokes);
+        Bitmap output = painted == source ? source.copy(Bitmap.Config.ARGB_8888, true) : painted;
+        Canvas canvas = new Canvas(output);
         float scale = Math.min(output.getWidth(), output.getHeight());
-        Bitmap blurred = null;
         for (PaintStroke stroke : strokes) {
-            if (stroke.kind() == PaintStroke.Kind.BLUR) {
-                if (blurred == null) blurred = createBlurredCopy(source, 1024);
-                drawBlurStroke(canvas, stroke, blurred, output.getWidth(), output.getHeight(), scale);
-            } else {
+            if (!isNekogramBrush(stroke.kind())) {
                 drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
             }
         }
-        new Canvas(output).drawBitmap(overlay, 0, 0, null);
-        if (blurred != null) blurred.recycle();
-        overlay.recycle();
-        Canvas outputCanvas = new Canvas(output);
         for (TextEntity entity : textEntities) {
-            TextRenderer.draw(outputCanvas, entity, output.getWidth(), output.getHeight());
+            TextRenderer.draw(canvas, entity, output.getWidth(), output.getHeight());
         }
         return output;
+    }
+
+    private static boolean isNekogramBrush(PaintStroke.Kind kind) {
+        return kind == PaintStroke.Kind.PEN || kind == PaintStroke.Kind.MARKER
+                || kind == PaintStroke.Kind.NEON || kind == PaintStroke.Kind.BLUR
+                || kind == PaintStroke.Kind.ERASER;
     }
 
     public static void drawStroke(Canvas canvas, PaintStroke stroke, float width, float height, float widthScale) {
