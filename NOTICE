@@ -1,0 +1,11 @@
+TGImageEditor contains and will contain code adapted from Telegram for Android
+and Nekogram, distributed under the GNU General Public License version 2 or
+later.
+
+Reference source:
+  https://github.com/Nekogram/Nekogram
+  revision e924154e8d3b99a645b0521013ff9b501b28e8ce
+
+Telegram for Android copyright notices are retained in adapted source files.
+Nekogram-specific changes remain attributable through its public Git history.
+
