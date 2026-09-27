@@ -58,6 +58,10 @@ public final class EditorView extends FrameLayout {
         paintOverlay.undo();
     }
 
+    public void setPaintBrush(PaintControls.BrushSpec brush) {
+        paintOverlay.setBrush(brush);
+    }
+
     public void endPaint() {
         paintOverlay.setVisibility(GONE);
     }

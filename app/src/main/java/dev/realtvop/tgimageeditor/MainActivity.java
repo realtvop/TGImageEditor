@@ -37,6 +37,7 @@ import dev.realtvop.tgimageeditor.model.FilterState;
 import dev.realtvop.tgimageeditor.model.PaintStroke;
 import dev.realtvop.tgimageeditor.ui.EditorView;
 import dev.realtvop.tgimageeditor.ui.FilterControls;
+import dev.realtvop.tgimageeditor.ui.PaintControls;
 
 public final class MainActivity extends Activity {
     private enum Tool { NONE, CROP, FILTER, PAINT }
@@ -67,6 +68,7 @@ public final class MainActivity extends Activity {
     private List<PaintStroke> pendingPaint;
     private Bitmap paintBaseBitmap;
     private FilterControls filterControls;
+    private PaintControls paintControls;
     private Tool activeTool = Tool.NONE;
     private int filterGeneration;
     private final Runnable renderFilter = this::enqueueFilterPreview;
@@ -87,6 +89,13 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams filterParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         filterParams.bottomMargin = dp(64);
         root.addView(filterControls, filterParams);
+
+        paintControls = new PaintControls(this);
+        paintControls.setVisibility(View.GONE);
+        paintControls.setListener(brush -> editorView.setPaintBrush(brush));
+        FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        paintParams.bottomMargin = dp(64);
+        root.addView(paintControls, paintParams);
 
         actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -374,11 +383,13 @@ public final class MainActivity extends Activity {
         paintBaseBitmap = ImagePipeline.renderBase(bitmap, document);
         editorView.setBitmap(paintBaseBitmap);
         editorView.beginPaint(pendingPaint, strokes -> pendingPaint = strokes);
+        paintControls.setVisibility(View.VISIBLE);
         setToolActionsVisible(true);
     }
 
     private void finishPaint(boolean apply) {
         editorView.endPaint();
+        paintControls.setVisibility(View.GONE);
         if (apply) {
             document = document.withPaintStrokes(pendingPaint);
             Bitmap previous = renderedBitmap;

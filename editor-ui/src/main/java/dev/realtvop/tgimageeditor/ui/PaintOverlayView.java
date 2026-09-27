@@ -22,6 +22,9 @@ final class PaintOverlayView extends View {
     private Consumer<List<PaintStroke>> listener;
     private int bitmapWidth = 1;
     private int bitmapHeight = 1;
+    private PaintStroke.Kind brushKind = PaintStroke.Kind.PEN;
+    private int brushColor = Color.WHITE;
+    private float brushWidth = .012f;
 
     PaintOverlayView(Context context) {
         super(context);
@@ -45,6 +48,12 @@ final class PaintOverlayView extends View {
         }
     }
 
+    void setBrush(PaintControls.BrushSpec brush) {
+        brushKind = brush.kind;
+        brushColor = brush.color;
+        brushWidth = brush.width;
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         updateBounds();
@@ -56,7 +65,7 @@ final class PaintOverlayView extends View {
                     Math.min(imageBounds.width(), imageBounds.height()));
         }
         if (!activePoints.isEmpty()) {
-            PaintRenderer.drawStroke(canvas, new PaintStroke(activePoints, Color.WHITE, .012f),
+            PaintRenderer.drawStroke(canvas, new PaintStroke(activePoints, brushColor, brushWidth, brushKind),
                     imageBounds.width(), imageBounds.height(), Math.min(imageBounds.width(), imageBounds.height()));
         }
         canvas.restore();
@@ -79,7 +88,7 @@ final class PaintOverlayView extends View {
         }
         if (event.getActionMasked() == MotionEvent.ACTION_UP && !activePoints.isEmpty()) {
             addPoint(event);
-            strokes.add(new PaintStroke(activePoints, Color.WHITE, .012f));
+            strokes.add(new PaintStroke(activePoints, brushColor, brushWidth, brushKind));
             activePoints.clear();
             notifyChanged();
             invalidate();
@@ -115,4 +124,3 @@ final class PaintOverlayView extends View {
         return Math.max(0f, Math.min(1f, value));
     }
 }
-
