@@ -21,6 +21,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import android.widget.EditText;
+import android.widget.TextView;
 
 import java.io.OutputStream;
 import java.io.File;
@@ -116,6 +117,7 @@ public final class MainActivity extends Activity {
 
     private View createContent() {
         FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xff000000);
         editorView = new EditorView(this);
         root.addView(editorView, new FrameLayout.LayoutParams(-1, -1));
 
@@ -143,11 +145,12 @@ public final class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
         actions.setPadding(dp(12), dp(8), dp(12), dp(8));
+        actions.setBackgroundColor(0xff2b2b2f);
 
         openButton = new Button(this);
-        openButton.setText(R.string.action_open);
+        openButton.setText(R.string.gallery_title);
+        styleAction(openButton);
         openButton.setOnClickListener(v -> openImage());
-        actions.addView(openButton);
 
         cropButton = actionButton(R.string.action_crop, v -> beginCrop());
         cropButton.setEnabled(false);
@@ -171,6 +174,7 @@ public final class MainActivity extends Activity {
 
         saveButton = new Button(this);
         saveButton.setText(R.string.action_save_copy);
+        styleAction(saveButton);
         saveButton.setEnabled(false);
         saveButton.setOnClickListener(v -> saveCopy());
         actions.addView(saveButton);
@@ -191,6 +195,19 @@ public final class MainActivity extends Activity {
         actions.addView(undoButton);
         setToolActionsVisible(false);
 
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(dp(4), 0, dp(8), 0);
+        topBar.setBackgroundColor(0xff2b2b2f);
+        TextView title = new TextView(this);
+        title.setText(R.string.app_name);
+        title.setTextColor(0xffffffff);
+        title.setTextSize(20);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1f));
+        topBar.addView(openButton, new LinearLayout.LayoutParams(dp(96), dp(56)));
+        root.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
+
         HorizontalScrollView actionScroller = new HorizontalScrollView(this);
         actionScroller.setHorizontalScrollBarEnabled(false);
         actionScroller.addView(actions, new HorizontalScrollView.LayoutParams(-2, -2));
@@ -202,8 +219,19 @@ public final class MainActivity extends Activity {
     private Button actionButton(int label, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(label);
+        styleAction(button);
         button.setOnClickListener(listener);
         return button;
+    }
+
+    private void styleAction(Button button) {
+        button.setAllCaps(false);
+        button.setTextColor(0xffffffff);
+        button.setTextSize(14);
+        button.setMinHeight(dp(44));
+        button.setMinWidth(dp(72));
+        button.setPadding(dp(10), 0, dp(10), 0);
+        button.setBackgroundColor(0x002b2b2f);
     }
 
     private void openImage() {

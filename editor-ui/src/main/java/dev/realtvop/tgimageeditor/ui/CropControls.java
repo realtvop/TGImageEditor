@@ -22,7 +22,7 @@ public final class CropControls extends LinearLayout {
         super(context);
         setOrientation(VERTICAL);
         setPadding(dp(8), dp(4), dp(8), dp(4));
-        setBackgroundColor(0xE6161618);
+        setBackgroundColor(0xE62B2B2F);
         HorizontalScrollView scroll = new HorizontalScrollView(context);
         scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout ratios = new LinearLayout(context);
@@ -77,6 +77,7 @@ public final class CropControls extends LinearLayout {
     private void addRatio(LinearLayout row, int title, float ratio) {
         Button button = new Button(getContext());
         button.setText(title);
+        styleButton(button);
         button.setOnClickListener(v -> {
             if (aspectListener != null) aspectListener.accept(ratio);
         });
@@ -85,5 +86,15 @@ public final class CropControls extends LinearLayout {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void styleButton(Button button) {
+        button.setAllCaps(false);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(13);
+        button.setMinHeight(dp(44));
+        button.setMinWidth(dp(76));
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setBackgroundColor(0x002B2B2F);
     }
 }

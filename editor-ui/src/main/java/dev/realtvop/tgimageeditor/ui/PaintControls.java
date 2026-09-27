@@ -36,7 +36,7 @@ public final class PaintControls extends LinearLayout {
         super(context);
         setOrientation(VERTICAL);
         setPadding(dp(8), dp(4), dp(8), dp(4));
-        setBackgroundColor(0xE6161618);
+        setBackgroundColor(0xE62B2B2F);
 
         HorizontalScrollView scroll = new HorizontalScrollView(context);
         scroll.setHorizontalScrollBarEnabled(false);
@@ -51,6 +51,7 @@ public final class PaintControls extends LinearLayout {
         addTool(tools, R.string.paint_oval, PaintStroke.Kind.OVAL);
         Button text = new Button(context);
         text.setText(R.string.paint_text);
+        styleButton(text);
         text.setOnClickListener(v -> {
             if (textRequestListener != null) textRequestListener.run();
         });
@@ -66,6 +67,7 @@ public final class PaintControls extends LinearLayout {
             button.setText("●");
             button.setTextColor(value);
             button.setTextSize(22);
+            styleButton(button);
             button.setMinWidth(dp(40));
             button.setOnClickListener(v -> {
                 color = value;
@@ -100,6 +102,7 @@ public final class PaintControls extends LinearLayout {
     private void addTool(LinearLayout parent, int title, PaintStroke.Kind value) {
         Button button = new Button(getContext());
         button.setText(title);
+        styleButton(button);
         button.setOnClickListener(v -> {
             kind = value;
             notifyChanged();
@@ -113,5 +116,14 @@ public final class PaintControls extends LinearLayout {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void styleButton(Button button) {
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setMinHeight(dp(44));
+        button.setMinWidth(dp(76));
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setBackgroundColor(0x002B2B2F);
     }
 }
