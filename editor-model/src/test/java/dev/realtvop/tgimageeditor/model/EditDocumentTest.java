@@ -66,4 +66,15 @@ public class EditDocumentTest {
         strokes.clear();
         assertEquals(1, document.paintStrokes().size());
     }
+
+    @Test
+    public void textTransformClampsPositionAndScale() {
+        TextEntity text = new TextEntity("Hello", .5f, .5f, .08f, 1f, 0f,
+                0xffffffff, TextEntity.Style.OUTLINE);
+        TextEntity moved = text.withTransform(2f, -1f, 10f, 30f);
+        assertEquals(1f, moved.x(), .0001f);
+        assertEquals(0f, moved.y(), .0001f);
+        assertEquals(4f, moved.scale(), .0001f);
+        assertEquals(.5f, text.x(), .0001f);
+    }
 }

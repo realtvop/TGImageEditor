@@ -2,6 +2,7 @@ package dev.realtvop.tgimageeditor;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -17,6 +18,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+import android.widget.EditText;
 
 import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +37,7 @@ import dev.realtvop.tgimageeditor.model.CropState;
 import dev.realtvop.tgimageeditor.model.EditDocument;
 import dev.realtvop.tgimageeditor.model.FilterState;
 import dev.realtvop.tgimageeditor.model.PaintStroke;
+import dev.realtvop.tgimageeditor.model.TextEntity;
 import dev.realtvop.tgimageeditor.ui.EditorView;
 import dev.realtvop.tgimageeditor.ui.FilterControls;
 import dev.realtvop.tgimageeditor.ui.PaintControls;
@@ -66,6 +69,7 @@ public final class MainActivity extends Activity {
     private CropState pendingCrop;
     private FilterState pendingFilter;
     private List<PaintStroke> pendingPaint;
+    private List<TextEntity> pendingText;
     private Bitmap paintBaseBitmap;
     private FilterControls filterControls;
     private PaintControls paintControls;
@@ -93,6 +97,7 @@ public final class MainActivity extends Activity {
         paintControls = new PaintControls(this);
         paintControls.setVisibility(View.GONE);
         paintControls.setListener(brush -> editorView.setPaintBrush(brush));
+        paintControls.setTextRequestListener(this::requestText);
         FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         paintParams.bottomMargin = dp(64);
         root.addView(paintControls, paintParams);
@@ -316,7 +321,7 @@ public final class MainActivity extends Activity {
         final Bitmap base = filterBaseBitmap;
         worker.execute(() -> {
             Bitmap filtered = FilterRenderer.render(base, filter);
-            Bitmap result = PaintRenderer.render(filtered, document.paintStrokes());
+            Bitmap result = PaintRenderer.render(filtered, document.paintStrokes(), document.textEntities());
             if (filtered != base && filtered != result) filtered.recycle();
             runOnUiThread(() -> {
                 if (generation != filterGeneration || activeTool != Tool.FILTER) {
@@ -380,9 +385,13 @@ public final class MainActivity extends Activity {
         if (bitmap == null || document == null) return;
         activeTool = Tool.PAINT;
         pendingPaint = new ArrayList<>(document.paintStrokes());
+        pendingText = new ArrayList<>(document.textEntities());
         paintBaseBitmap = ImagePipeline.renderBase(bitmap, document);
         editorView.setBitmap(paintBaseBitmap);
-        editorView.beginPaint(pendingPaint, strokes -> pendingPaint = strokes);
+        editorView.beginPaint(pendingPaint, pendingText, (strokes, entities) -> {
+            pendingPaint = strokes;
+            pendingText = entities;
+        });
         paintControls.setVisibility(View.VISIBLE);
         setToolActionsVisible(true);
     }
@@ -391,7 +400,7 @@ public final class MainActivity extends Activity {
         editorView.endPaint();
         paintControls.setVisibility(View.GONE);
         if (apply) {
-            document = document.withPaintStrokes(pendingPaint);
+            document = document.withDrawing(pendingPaint, pendingText);
             Bitmap previous = renderedBitmap;
             renderedBitmap = ImagePipeline.render(bitmap, document);
             if (previous != bitmap && previous != renderedBitmap && previous != paintBaseBitmap) previous.recycle();
@@ -399,6 +408,22 @@ public final class MainActivity extends Activity {
         editorView.setBitmap(renderedBitmap);
         paintBaseBitmap = null;
         pendingPaint = null;
+        pendingText = null;
+    }
+
+    private void requestText() {
+        EditText input = new EditText(this);
+        input.setHint(R.string.add_text_hint);
+        input.setSingleLine(false);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.add_text_title)
+                .setView(input)
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.action_add, (dialog, which) -> {
+                    String text = input.getText().toString().trim();
+                    if (!text.isEmpty()) editorView.addPaintText(text);
+                })
+                .show();
     }
 
     @Override

@@ -10,7 +10,7 @@ public final class ImagePipeline {
 
     public static Bitmap render(Bitmap source, EditDocument document) {
         Bitmap base = renderBase(source, document);
-        Bitmap painted = PaintRenderer.render(base, document.paintStrokes());
+        Bitmap painted = PaintRenderer.render(base, document.paintStrokes(), document.textEntities());
         if (base != source && base != painted) base.recycle();
         return painted;
     }

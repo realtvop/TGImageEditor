@@ -48,9 +48,12 @@ public final class EditorView extends FrameLayout {
     }
 
     public void beginPaint(java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke> strokes,
-                           java.util.function.Consumer<java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke>> listener) {
+                           java.util.List<dev.realtvop.tgimageeditor.model.TextEntity> entities,
+                           java.util.function.BiConsumer<java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke>,
+                                   java.util.List<dev.realtvop.tgimageeditor.model.TextEntity>> listener) {
         if (imageView.getDrawable() == null) return;
-        paintOverlay.bind(imageView.getDrawable().getIntrinsicWidth(), imageView.getDrawable().getIntrinsicHeight(), strokes, listener);
+        paintOverlay.bind(imageView.getDrawable().getIntrinsicWidth(), imageView.getDrawable().getIntrinsicHeight(),
+                strokes, entities, listener::accept);
         paintOverlay.setVisibility(VISIBLE);
     }
 
@@ -60,6 +63,10 @@ public final class EditorView extends FrameLayout {
 
     public void setPaintBrush(PaintControls.BrushSpec brush) {
         paintOverlay.setBrush(brush);
+    }
+
+    public void addPaintText(String text) {
+        paintOverlay.addText(text);
     }
 
     public void endPaint() {

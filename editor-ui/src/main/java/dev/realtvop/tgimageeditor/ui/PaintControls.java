@@ -30,6 +30,7 @@ public final class PaintControls extends LinearLayout {
     private int color = Color.WHITE;
     private float width = .012f;
     private Consumer<BrushSpec> listener;
+    private Runnable textRequestListener;
 
     public PaintControls(Context context) {
         super(context);
@@ -47,6 +48,12 @@ public final class PaintControls extends LinearLayout {
         addTool(tools, R.string.paint_arrow, PaintStroke.Kind.ARROW);
         addTool(tools, R.string.paint_rectangle, PaintStroke.Kind.RECTANGLE);
         addTool(tools, R.string.paint_oval, PaintStroke.Kind.OVAL);
+        Button text = new Button(context);
+        text.setText(R.string.paint_text);
+        text.setOnClickListener(v -> {
+            if (textRequestListener != null) textRequestListener.run();
+        });
+        tools.addView(text);
         scroll.addView(tools);
         addView(scroll, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
@@ -85,6 +92,10 @@ public final class PaintControls extends LinearLayout {
         notifyChanged();
     }
 
+    public void setTextRequestListener(Runnable listener) {
+        textRequestListener = listener;
+    }
+
     private void addTool(LinearLayout parent, int title, PaintStroke.Kind value) {
         Button button = new Button(getContext());
         button.setText(title);
@@ -103,4 +114,3 @@ public final class PaintControls extends LinearLayout {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }
-

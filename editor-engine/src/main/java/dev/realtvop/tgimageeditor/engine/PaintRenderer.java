@@ -12,12 +12,17 @@ import java.util.List;
 
 import dev.realtvop.tgimageeditor.model.PaintPoint;
 import dev.realtvop.tgimageeditor.model.PaintStroke;
+import dev.realtvop.tgimageeditor.model.TextEntity;
 
 public final class PaintRenderer {
     private PaintRenderer() {}
 
     public static Bitmap render(Bitmap source, List<PaintStroke> strokes) {
-        if (strokes.isEmpty()) return source;
+        return render(source, strokes, java.util.Collections.emptyList());
+    }
+
+    public static Bitmap render(Bitmap source, List<PaintStroke> strokes, List<TextEntity> textEntities) {
+        if (strokes.isEmpty() && textEntities.isEmpty()) return source;
         Bitmap output = source.copy(Bitmap.Config.ARGB_8888, true);
         Bitmap overlay = Bitmap.createBitmap(output.getWidth(), output.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(overlay);
@@ -25,6 +30,10 @@ public final class PaintRenderer {
         for (PaintStroke stroke : strokes) drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
         new Canvas(output).drawBitmap(overlay, 0, 0, null);
         overlay.recycle();
+        Canvas outputCanvas = new Canvas(output);
+        for (TextEntity entity : textEntities) {
+            TextRenderer.draw(outputCanvas, entity, output.getWidth(), output.getHeight());
+        }
         return output;
     }
 
