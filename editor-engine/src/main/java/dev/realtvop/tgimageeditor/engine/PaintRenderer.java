@@ -50,6 +50,13 @@ public final class PaintRenderer {
     }
 
     public static void drawStroke(Canvas canvas, PaintStroke stroke, float width, float height, float widthScale) {
+        if (stroke.kind() == PaintStroke.Kind.PEN
+                || stroke.kind() == PaintStroke.Kind.MARKER
+                || stroke.kind() == PaintStroke.Kind.NEON
+                || stroke.kind() == PaintStroke.Kind.ERASER) {
+            drawBrushStamps(canvas, stroke, width, height, widthScale);
+            return;
+        }
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
         paint.setColor(stroke.color());
         paint.setStyle(Paint.Style.STROKE);
@@ -79,6 +86,86 @@ public final class PaintRenderer {
             paint.setStrokeWidth(Math.max(1f, paint.getStrokeWidth() * .35f));
         }
         canvas.drawPath(path, paint);
+    }
+
+    /**
+     * Nekogram's paint renderer stamps a brush texture along the input path at a
+     * brush-specific spacing. Canvas circles/ellipses are the standalone equivalent
+     * of its radial and elliptical stamp textures.
+     */
+    private static void drawBrushStamps(Canvas canvas, PaintStroke stroke, float width,
+                                        float height, float widthScale) {
+        float radius = Math.max(.5f, stroke.width() * widthScale);
+        float spacingRate = stroke.kind() == PaintStroke.Kind.MARKER ? .04f : .15f;
+        float spacing = Math.max(1f, radius * 2f * spacingRate);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(stroke.color());
+        if (stroke.kind() == PaintStroke.Kind.PEN) {
+            paint.setAlpha(Math.round(ColorAlpha(stroke.color()) * .85f));
+        } else if (stroke.kind() == PaintStroke.Kind.MARKER) {
+            paint.setAlpha(Math.round(ColorAlpha(stroke.color()) * .30f));
+        } else if (stroke.kind() == PaintStroke.Kind.NEON) {
+            paint.setAlpha(Math.round(ColorAlpha(stroke.color()) * .70f));
+        } else {
+            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+            paint.setAlpha(255);
+        }
+
+        List<PaintPoint> points = stroke.points();
+        if (points.size() == 1) {
+            drawStamp(canvas, paint, points.get(0).x() * width, points.get(0).y() * height,
+                    radius, 0f, stroke.kind());
+            return;
+        }
+        float remainder = 0f;
+        for (int i = 1; i < points.size(); i++) {
+            PaintPoint previous = points.get(i - 1);
+            PaintPoint current = points.get(i);
+            float x1 = previous.x() * width;
+            float y1 = previous.y() * height;
+            float x2 = current.x() * width;
+            float y2 = current.y() * height;
+            float dx = x2 - x1;
+            float dy = y2 - y1;
+            float distance = (float) Math.hypot(dx, dy);
+            if (distance <= 0f) continue;
+            float ux = dx / distance;
+            float uy = dy / distance;
+            float offset = spacing - remainder;
+            for (float travelled = offset; travelled <= distance; travelled += spacing) {
+                float x = x1 + ux * travelled;
+                float y = y1 + uy * travelled;
+                drawStamp(canvas, paint, x, y, radius, (float) Math.atan2(dy, dx), stroke.kind());
+            }
+            remainder = (remainder + distance) % spacing;
+        }
+        PaintPoint last = points.get(points.size() - 1);
+        drawStamp(canvas, paint, last.x() * width, last.y() * height, radius, 0f, stroke.kind());
+    }
+
+    private static void drawStamp(Canvas canvas, Paint paint, float x, float y, float radius,
+                                  float angle, PaintStroke.Kind kind) {
+        if (kind == PaintStroke.Kind.MARKER) {
+            canvas.save();
+            canvas.rotate((float) Math.toDegrees(angle), x, y);
+            canvas.drawOval(new RectF(x - radius * 1.5f, y - radius, x + radius * 1.5f, y + radius), paint);
+            canvas.restore();
+        } else if (kind == PaintStroke.Kind.NEON) {
+            Paint glow = new Paint(paint);
+            glow.setAlpha(Math.round(paint.getAlpha() * .45f));
+            canvas.drawCircle(x, y, radius * 1.65f, glow);
+            Paint core = new Paint(paint);
+            core.setColor(0xffffffff);
+            core.setAlpha(Math.min(255, paint.getAlpha() + 45));
+            canvas.drawCircle(x, y, Math.max(.5f, radius * .35f), core);
+        } else {
+            canvas.drawCircle(x, y, radius, paint);
+        }
+    }
+
+    private static int ColorAlpha(int color) {
+        return (color >>> 24) & 255;
     }
 
     public static void drawBlurStroke(Canvas canvas, PaintStroke stroke, Bitmap blurred,
