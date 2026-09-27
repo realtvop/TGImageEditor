@@ -6,6 +6,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Arrays;
+
 public class EditDocumentTest {
     @Test
     public void newDocumentStartsWithIdentityEdits() {
@@ -53,5 +55,15 @@ public class EditDocumentTest {
         assertEquals(-.5f, state.saturation(), .0001f);
         assertEquals(0f, state.contrast(), .0001f);
         assertTrue(FilterState.NONE.isIdentity());
+    }
+
+    @Test
+    public void documentCopiesPaintInput() {
+        PaintStroke stroke = new PaintStroke(Arrays.asList(new PaintPoint(.1f, .2f)), 0xffffffff, .02f);
+        java.util.ArrayList<PaintStroke> strokes = new java.util.ArrayList<>();
+        strokes.add(stroke);
+        EditDocument document = EditDocument.create(new SourceImage("test", 100, 100)).withPaintStrokes(strokes);
+        strokes.clear();
+        assertEquals(1, document.paintStrokes().size());
     }
 }

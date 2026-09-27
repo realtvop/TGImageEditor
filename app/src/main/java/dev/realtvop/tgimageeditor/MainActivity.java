@@ -21,6 +21,8 @@ import android.widget.Toast;
 import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.ArrayList;
+import java.util.List;
 
 import dev.realtvop.tgimageeditor.engine.DecodedImage;
 import dev.realtvop.tgimageeditor.engine.ImageDecoder;
@@ -28,14 +30,16 @@ import dev.realtvop.tgimageeditor.engine.ImageExporter;
 import dev.realtvop.tgimageeditor.engine.CropRenderer;
 import dev.realtvop.tgimageeditor.engine.FilterRenderer;
 import dev.realtvop.tgimageeditor.engine.ImagePipeline;
+import dev.realtvop.tgimageeditor.engine.PaintRenderer;
 import dev.realtvop.tgimageeditor.model.CropState;
 import dev.realtvop.tgimageeditor.model.EditDocument;
 import dev.realtvop.tgimageeditor.model.FilterState;
+import dev.realtvop.tgimageeditor.model.PaintStroke;
 import dev.realtvop.tgimageeditor.ui.EditorView;
 import dev.realtvop.tgimageeditor.ui.FilterControls;
 
 public final class MainActivity extends Activity {
-    private enum Tool { NONE, CROP, FILTER }
+    private enum Tool { NONE, CROP, FILTER, PAINT }
     private static final int REQUEST_OPEN_IMAGE = 100;
     private static final int REQUEST_WRITE_IMAGES = 101;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -46,10 +50,12 @@ public final class MainActivity extends Activity {
     private Button saveButton;
     private Button cropButton;
     private Button filterButton;
+    private Button paintButton;
     private Button rotateButton;
     private Button mirrorButton;
     private Button cancelButton;
     private Button doneButton;
+    private Button undoButton;
     private Bitmap bitmap;
     private Bitmap renderedBitmap;
     private Bitmap cropSurfaceBitmap;
@@ -58,6 +64,8 @@ public final class MainActivity extends Activity {
     private EditDocument document;
     private CropState pendingCrop;
     private FilterState pendingFilter;
+    private List<PaintStroke> pendingPaint;
+    private Bitmap paintBaseBitmap;
     private FilterControls filterControls;
     private Tool activeTool = Tool.NONE;
     private int filterGeneration;
@@ -98,6 +106,10 @@ public final class MainActivity extends Activity {
         filterButton.setEnabled(false);
         actions.addView(filterButton);
 
+        paintButton = actionButton(R.string.action_draw, v -> beginPaint());
+        paintButton.setEnabled(false);
+        actions.addView(paintButton);
+
         saveButton = new Button(this);
         saveButton.setText(R.string.action_save_copy);
         saveButton.setEnabled(false);
@@ -108,10 +120,12 @@ public final class MainActivity extends Activity {
         mirrorButton = actionButton(R.string.action_mirror, v -> updateCrop(pendingCrop.toggleMirror()));
         cancelButton = actionButton(R.string.action_cancel, v -> finishTool(false));
         doneButton = actionButton(R.string.action_done, v -> finishTool(true));
+        undoButton = actionButton(R.string.action_undo, v -> editorView.undoPaint());
         actions.addView(rotateButton);
         actions.addView(mirrorButton);
         actions.addView(cancelButton);
         actions.addView(doneButton);
+        actions.addView(undoButton);
         setToolActionsVisible(false);
 
         FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -151,6 +165,7 @@ public final class MainActivity extends Activity {
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
+        paintButton.setEnabled(false);
         saveButton.setEnabled(false);
         worker.execute(() -> {
             try {
@@ -166,6 +181,7 @@ public final class MainActivity extends Activity {
                     saveButton.setEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
+                    paintButton.setEnabled(true);
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
                         previousRendered.recycle();
@@ -189,6 +205,7 @@ public final class MainActivity extends Activity {
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
+        paintButton.setEnabled(false);
         worker.execute(() -> {
             Uri outputUri = null;
             try {
@@ -214,6 +231,7 @@ public final class MainActivity extends Activity {
                     openButton.setEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
+                    paintButton.setEnabled(true);
                     saveButton.setEnabled(true);
                     Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
                 });
@@ -288,7 +306,9 @@ public final class MainActivity extends Activity {
         final FilterState filter = pendingFilter;
         final Bitmap base = filterBaseBitmap;
         worker.execute(() -> {
-            Bitmap result = FilterRenderer.render(base, filter);
+            Bitmap filtered = FilterRenderer.render(base, filter);
+            Bitmap result = PaintRenderer.render(filtered, document.paintStrokes());
+            if (filtered != base && filtered != result) filtered.recycle();
             runOnUiThread(() -> {
                 if (generation != filterGeneration || activeTool != Tool.FILTER) {
                     if (result != base) result.recycle();
@@ -330,19 +350,44 @@ public final class MainActivity extends Activity {
     private void finishTool(boolean apply) {
         if (activeTool == Tool.CROP) finishCrop(apply);
         if (activeTool == Tool.FILTER) finishFilter(apply);
+        if (activeTool == Tool.PAINT) finishPaint(apply);
         activeTool = Tool.NONE;
         setToolActionsVisible(false);
     }
 
     private void setToolActionsVisible(boolean editing) {
         int normalVisibility = editing ? View.GONE : View.VISIBLE;
-        for (int index = 0; index < 4; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        for (int index = 0; index < 5; index++) actions.getChildAt(index).setVisibility(normalVisibility);
         boolean crop = editing && activeTool == Tool.CROP;
         rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
         mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
         cancelButton.setVisibility(editing ? View.VISIBLE : View.GONE);
         doneButton.setVisibility(editing ? View.VISIBLE : View.GONE);
+        undoButton.setVisibility(editing && activeTool == Tool.PAINT ? View.VISIBLE : View.GONE);
         doneButton.setEnabled(true);
+    }
+
+    private void beginPaint() {
+        if (bitmap == null || document == null) return;
+        activeTool = Tool.PAINT;
+        pendingPaint = new ArrayList<>(document.paintStrokes());
+        paintBaseBitmap = ImagePipeline.renderBase(bitmap, document);
+        editorView.setBitmap(paintBaseBitmap);
+        editorView.beginPaint(pendingPaint, strokes -> pendingPaint = strokes);
+        setToolActionsVisible(true);
+    }
+
+    private void finishPaint(boolean apply) {
+        editorView.endPaint();
+        if (apply) {
+            document = document.withPaintStrokes(pendingPaint);
+            Bitmap previous = renderedBitmap;
+            renderedBitmap = ImagePipeline.render(bitmap, document);
+            if (previous != bitmap && previous != renderedBitmap && previous != paintBaseBitmap) previous.recycle();
+        }
+        editorView.setBitmap(renderedBitmap);
+        paintBaseBitmap = null;
+        pendingPaint = null;
     }
 
     @Override
@@ -361,6 +406,7 @@ public final class MainActivity extends Activity {
             openButton.setEnabled(true);
             cropButton.setEnabled(bitmap != null);
             filterButton.setEnabled(bitmap != null);
+            paintButton.setEnabled(bitmap != null);
             saveButton.setEnabled(bitmap != null);
             Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });

@@ -11,6 +11,7 @@ import android.widget.ImageView;
 public final class EditorView extends FrameLayout {
     private final ImageView imageView;
     private final CropOverlayView cropOverlay;
+    private final PaintOverlayView paintOverlay;
 
     public EditorView(Context context) {
         super(context);
@@ -21,6 +22,9 @@ public final class EditorView extends FrameLayout {
         cropOverlay = new CropOverlayView(context);
         cropOverlay.setVisibility(GONE);
         addView(cropOverlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        paintOverlay = new PaintOverlayView(context);
+        paintOverlay.setVisibility(GONE);
+        addView(paintOverlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
 
     public void setBitmap(Bitmap bitmap) {
@@ -41,5 +45,20 @@ public final class EditorView extends FrameLayout {
 
     public void endCrop() {
         cropOverlay.setVisibility(GONE);
+    }
+
+    public void beginPaint(java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke> strokes,
+                           java.util.function.Consumer<java.util.List<dev.realtvop.tgimageeditor.model.PaintStroke>> listener) {
+        if (imageView.getDrawable() == null) return;
+        paintOverlay.bind(imageView.getDrawable().getIntrinsicWidth(), imageView.getDrawable().getIntrinsicHeight(), strokes, listener);
+        paintOverlay.setVisibility(VISIBLE);
+    }
+
+    public void undoPaint() {
+        paintOverlay.undo();
+    }
+
+    public void endPaint() {
+        paintOverlay.setVisibility(GONE);
     }
 }
