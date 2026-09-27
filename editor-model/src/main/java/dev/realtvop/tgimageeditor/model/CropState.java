@@ -1,6 +1,6 @@
 package dev.realtvop.tgimageeditor.model;
 
-/** Crop geometry in normalized, orientation-corrected source coordinates. */
+/** Crop geometry normalized within the source after mirror and rotation are applied. */
 public final class CropState {
     public static final CropState FULL_IMAGE = new CropState(0.5f, 0.5f, 1f, 1f, 0f, 0, false);
 
@@ -49,10 +49,31 @@ public final class CropState {
     public float fineRotationDegrees() { return fineRotationDegrees; }
     public int quarterTurns() { return quarterTurns; }
     public boolean mirrored() { return mirrored; }
+    public float left() { return centerX - width / 2f; }
+    public float top() { return centerY - height / 2f; }
+    public float right() { return centerX + width / 2f; }
+    public float bottom() { return centerY + height / 2f; }
+
+    public CropState withBounds(float left, float top, float right, float bottom) {
+        if (left < 0f || top < 0f || right > 1f || bottom > 1f || right <= left || bottom <= top) {
+            throw new IllegalArgumentException("Crop bounds must form a positive rectangle inside the image");
+        }
+        return new CropState((left + right) / 2f, (top + bottom) / 2f,
+                right - left, bottom - top, fineRotationDegrees, quarterTurns, mirrored);
+    }
+
+    public CropState rotateClockwise() {
+        return new CropState(centerX, centerY, width, height, fineRotationDegrees,
+                quarterTurns + 1, mirrored);
+    }
+
+    public CropState toggleMirror() {
+        return new CropState(centerX, centerY, width, height, fineRotationDegrees,
+                quarterTurns, !mirrored);
+    }
 
     public boolean isIdentity() {
         return centerX == 0.5f && centerY == 0.5f && width == 1f && height == 1f
                 && fineRotationDegrees == 0f && quarterTurns == 0 && !mirrored;
     }
 }
-

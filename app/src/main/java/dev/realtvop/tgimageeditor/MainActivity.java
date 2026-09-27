@@ -23,6 +23,9 @@ import java.util.concurrent.Executors;
 import dev.realtvop.tgimageeditor.engine.DecodedImage;
 import dev.realtvop.tgimageeditor.engine.ImageDecoder;
 import dev.realtvop.tgimageeditor.engine.ImageExporter;
+import dev.realtvop.tgimageeditor.engine.CropRenderer;
+import dev.realtvop.tgimageeditor.model.CropState;
+import dev.realtvop.tgimageeditor.model.EditDocument;
 import dev.realtvop.tgimageeditor.ui.EditorView;
 
 public final class MainActivity extends Activity {
@@ -30,8 +33,19 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_WRITE_IMAGES = 101;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private EditorView editorView;
+    private LinearLayout actions;
+    private Button openButton;
     private Button saveButton;
+    private Button cropButton;
+    private Button rotateButton;
+    private Button mirrorButton;
+    private Button cancelButton;
+    private Button doneButton;
     private Bitmap bitmap;
+    private Bitmap renderedBitmap;
+    private Bitmap cropSurfaceBitmap;
+    private EditDocument document;
+    private CropState pendingCrop;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -44,15 +58,19 @@ public final class MainActivity extends Activity {
         editorView = new EditorView(this);
         root.addView(editorView, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout actions = new LinearLayout(this);
+        actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
         actions.setPadding(dp(12), dp(8), dp(12), dp(8));
 
-        Button openButton = new Button(this);
+        openButton = new Button(this);
         openButton.setText("Open");
         openButton.setOnClickListener(v -> openImage());
         actions.addView(openButton);
+
+        cropButton = actionButton("Crop", v -> beginCrop());
+        cropButton.setEnabled(false);
+        actions.addView(cropButton);
 
         saveButton = new Button(this);
         saveButton.setText("Save copy");
@@ -60,9 +78,26 @@ public final class MainActivity extends Activity {
         saveButton.setOnClickListener(v -> saveCopy());
         actions.addView(saveButton);
 
+        rotateButton = actionButton("Rotate", v -> updateCrop(pendingCrop.rotateClockwise()));
+        mirrorButton = actionButton("Mirror", v -> updateCrop(pendingCrop.toggleMirror()));
+        cancelButton = actionButton("Cancel", v -> finishCrop(false));
+        doneButton = actionButton("Done", v -> finishCrop(true));
+        actions.addView(rotateButton);
+        actions.addView(mirrorButton);
+        actions.addView(cancelButton);
+        actions.addView(doneButton);
+        setCropActionsVisible(false);
+
         FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         root.addView(actions, actionParams);
         return root;
+    }
+
+    private Button actionButton(String label, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setOnClickListener(listener);
+        return button;
     }
 
     private void openImage() {
@@ -87,16 +122,26 @@ public final class MainActivity extends Activity {
     }
 
     private void loadImage(Uri uri) {
+        openButton.setEnabled(false);
+        cropButton.setEnabled(false);
         saveButton.setEnabled(false);
         worker.execute(() -> {
             try {
                 DecodedImage image = ImageDecoder.decode(getContentResolver(), uri, 3840);
                 runOnUiThread(() -> {
                     Bitmap previous = bitmap;
+                    Bitmap previousRendered = renderedBitmap;
                     bitmap = image.bitmap();
-                    editorView.setBitmap(bitmap);
+                    document = image.document();
+                    renderedBitmap = bitmap;
+                    editorView.setBitmap(renderedBitmap);
+                    openButton.setEnabled(true);
                     saveButton.setEnabled(true);
+                    cropButton.setEnabled(true);
                     if (previous != null && previous != bitmap) previous.recycle();
+                    if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
+                        previousRendered.recycle();
+                    }
                 });
             } catch (Exception error) {
                 showError("Unable to open image", error);
@@ -105,7 +150,7 @@ public final class MainActivity extends Activity {
     }
 
     private void saveCopy() {
-        Bitmap snapshot = bitmap;
+        Bitmap snapshot = renderedBitmap;
         if (snapshot == null) return;
         if (android.os.Build.VERSION.SDK_INT < 29
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
@@ -113,6 +158,8 @@ public final class MainActivity extends Activity {
             return;
         }
         saveButton.setEnabled(false);
+        openButton.setEnabled(false);
+        cropButton.setEnabled(false);
         worker.execute(() -> {
             Uri outputUri = null;
             try {
@@ -135,6 +182,8 @@ public final class MainActivity extends Activity {
                     getContentResolver().update(outputUri, values, null, null);
                 }
                 runOnUiThread(() -> {
+                    openButton.setEnabled(true);
+                    cropButton.setEnabled(true);
                     saveButton.setEnabled(true);
                     Toast.makeText(this, "Saved to Pictures/TGImageEditor", Toast.LENGTH_SHORT).show();
                 });
@@ -143,6 +192,55 @@ public final class MainActivity extends Activity {
                 showError("Unable to save image", error);
             }
         });
+    }
+
+    private void beginCrop() {
+        if (bitmap == null || document == null) return;
+        pendingCrop = document.crop();
+        showCropSurface();
+        editorView.beginCrop(pendingCrop, crop -> pendingCrop = crop);
+        setCropActionsVisible(true);
+    }
+
+    private void updateCrop(CropState crop) {
+        pendingCrop = crop;
+        showCropSurface();
+        editorView.updateCrop(pendingCrop);
+    }
+
+    private void showCropSurface() {
+        Bitmap next = CropRenderer.transformSource(bitmap, pendingCrop);
+        if (cropSurfaceBitmap != null && cropSurfaceBitmap != bitmap && cropSurfaceBitmap != next) {
+            cropSurfaceBitmap.recycle();
+        }
+        cropSurfaceBitmap = next;
+        editorView.setBitmap(cropSurfaceBitmap);
+    }
+
+    private void finishCrop(boolean apply) {
+        editorView.endCrop();
+        if (apply) {
+            document = document.withCrop(pendingCrop);
+            Bitmap next = CropRenderer.render(bitmap, document.crop());
+            if (renderedBitmap != null && renderedBitmap != bitmap && renderedBitmap != next) renderedBitmap.recycle();
+            renderedBitmap = next;
+        }
+        if (cropSurfaceBitmap != null && cropSurfaceBitmap != bitmap && cropSurfaceBitmap != renderedBitmap) {
+            cropSurfaceBitmap.recycle();
+        }
+        cropSurfaceBitmap = null;
+        editorView.setBitmap(renderedBitmap);
+        setCropActionsVisible(false);
+    }
+
+    private void setCropActionsVisible(boolean cropping) {
+        int normalVisibility = cropping ? View.GONE : View.VISIBLE;
+        int cropVisibility = cropping ? View.VISIBLE : View.GONE;
+        for (int index = 0; index < 3; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        rotateButton.setVisibility(cropVisibility);
+        mirrorButton.setVisibility(cropVisibility);
+        cancelButton.setVisibility(cropVisibility);
+        doneButton.setVisibility(cropVisibility);
     }
 
     @Override
@@ -158,6 +256,8 @@ public final class MainActivity extends Activity {
 
     private void showError(String message, Exception error) {
         runOnUiThread(() -> {
+            openButton.setEnabled(true);
+            cropButton.setEnabled(bitmap != null);
             saveButton.setEnabled(bitmap != null);
             Toast.makeText(this, message + ": " + error.getMessage(), Toast.LENGTH_LONG).show();
         });
