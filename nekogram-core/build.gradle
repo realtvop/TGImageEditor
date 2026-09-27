@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'dev.realtvop.tgimageeditor.engine'
+    namespace 'dev.realtvop.tgimageeditor.nekogram'
     compileSdk 36
 
     defaultConfig {
@@ -18,5 +18,4 @@ android {
 
 dependencies {
     api project(':editor-model')
-    implementation project(':nekogram-core')
 }

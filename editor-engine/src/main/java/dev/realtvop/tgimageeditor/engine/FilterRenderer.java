@@ -13,18 +13,14 @@ import android.graphics.Shader;
 
 import dev.realtvop.tgimageeditor.model.BlurState;
 import dev.realtvop.tgimageeditor.model.FilterState;
+import dev.realtvop.tgimageeditor.nekogram.NekogramFilterPipeline;
 
-/** Static-image implementation of Telegram's adjustment, curve, sharpen and focus-blur stages. */
+/** Nekogram GL filter pipeline plus the shared Gaussian helper used by the blur brush. */
 public final class FilterRenderer {
     private FilterRenderer() {}
 
     public static Bitmap render(Bitmap source, FilterState state) {
-        if (state.isIdentity()) return source;
-        Bitmap output = colorAdjust(source, state);
-        applyPixelAdjustments(output, state);
-        Bitmap blurred = applyBlurEffects(output, state);
-        if (blurred != output) output.recycle();
-        return blurred;
+        return NekogramFilterPipeline.render(source, state);
     }
 
     private static Bitmap colorAdjust(Bitmap source, FilterState state) {
