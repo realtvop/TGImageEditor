@@ -16,6 +16,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import android.widget.EditText;
@@ -24,6 +25,7 @@ import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.List;
 
 import dev.realtvop.tgimageeditor.engine.DecodedImage;
@@ -57,6 +59,8 @@ public final class MainActivity extends Activity {
     private Button cropButton;
     private Button filterButton;
     private Button paintButton;
+    private Button documentUndoButton;
+    private Button documentRedoButton;
     private Button rotateButton;
     private Button mirrorButton;
     private Button cancelButton;
@@ -79,6 +83,9 @@ public final class MainActivity extends Activity {
     private Tool activeTool = Tool.NONE;
     private int filterGeneration;
     private final Runnable renderFilter = this::enqueueFilterPreview;
+    private final ArrayDeque<EditDocument> undoHistory = new ArrayDeque<>();
+    private final ArrayDeque<EditDocument> redoHistory = new ArrayDeque<>();
+    private boolean historyRendering;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -138,6 +145,14 @@ public final class MainActivity extends Activity {
         paintButton.setEnabled(false);
         actions.addView(paintButton);
 
+        documentUndoButton = actionButton(R.string.action_undo, v -> navigateHistory(true));
+        documentUndoButton.setEnabled(false);
+        actions.addView(documentUndoButton);
+
+        documentRedoButton = actionButton(R.string.action_redo, v -> navigateHistory(false));
+        documentRedoButton.setEnabled(false);
+        actions.addView(documentRedoButton);
+
         saveButton = new Button(this);
         saveButton.setText(R.string.action_save_copy);
         saveButton.setEnabled(false);
@@ -156,8 +171,11 @@ public final class MainActivity extends Activity {
         actions.addView(undoButton);
         setToolActionsVisible(false);
 
-        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        root.addView(actions, actionParams);
+        HorizontalScrollView actionScroller = new HorizontalScrollView(this);
+        actionScroller.setHorizontalScrollBarEnabled(false);
+        actionScroller.addView(actions, new HorizontalScrollView.LayoutParams(-2, -2));
+        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        root.addView(actionScroller, actionParams);
         return root;
     }
 
@@ -194,6 +212,8 @@ public final class MainActivity extends Activity {
     }
 
     private void loadImage(Uri uri, EditDocument restoredDocument) {
+        historyRendering = true;
+        updateHistoryButtons();
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
@@ -209,6 +229,9 @@ public final class MainActivity extends Activity {
                     Bitmap previousRendered = renderedBitmap;
                     bitmap = image.bitmap();
                     document = restoredDocument == null ? image.document() : restoredDocument;
+                    undoHistory.clear();
+                    redoHistory.clear();
+                    historyRendering = false;
                     renderedBitmap = restoredBitmap;
                     editorView.setBitmap(renderedBitmap);
                     openButton.setEnabled(true);
@@ -216,12 +239,14 @@ public final class MainActivity extends Activity {
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
+                    updateHistoryButtons();
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
                         previousRendered.recycle();
                     }
                 });
             } catch (Exception error) {
+                historyRendering = false;
                 showError(getString(R.string.error_open_image), error);
             }
         });
@@ -326,10 +351,9 @@ public final class MainActivity extends Activity {
         editorView.endCrop();
         cropControls.setVisibility(View.GONE);
         if (apply) {
-            document = document.withCrop(pendingCrop);
-            Bitmap next = ImagePipeline.render(bitmap, document);
-            if (renderedBitmap != null && renderedBitmap != bitmap && renderedBitmap != next) renderedBitmap.recycle();
-            renderedBitmap = next;
+            EditDocument nextDocument = document.withCrop(pendingCrop);
+            Bitmap next = ImagePipeline.render(bitmap, nextDocument);
+            acceptDocument(nextDocument, next);
         }
         if (cropSurfaceBitmap != null && cropSurfaceBitmap != bitmap && cropSurfaceBitmap != renderedBitmap) {
             cropSurfaceBitmap.recycle();
@@ -387,10 +411,7 @@ public final class MainActivity extends Activity {
         filterGeneration++;
         filterControls.setVisibility(View.GONE);
         if (apply && filterPreviewBitmap != null) {
-            document = document.withFilter(pendingFilter);
-            Bitmap previous = renderedBitmap;
-            renderedBitmap = filterPreviewBitmap;
-            if (previous != bitmap && previous != renderedBitmap && previous != filterBaseBitmap) previous.recycle();
+            acceptDocument(document.withFilter(pendingFilter), filterPreviewBitmap);
         } else {
             editorView.setBitmap(renderedBitmap);
         }
@@ -414,7 +435,7 @@ public final class MainActivity extends Activity {
 
     private void setToolActionsVisible(boolean editing) {
         int normalVisibility = editing ? View.GONE : View.VISIBLE;
-        for (int index = 0; index < 5; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        for (int index = 0; index < 7; index++) actions.getChildAt(index).setVisibility(normalVisibility);
         boolean crop = editing && activeTool == Tool.CROP;
         rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
         mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
@@ -443,10 +464,9 @@ public final class MainActivity extends Activity {
         editorView.endPaint();
         paintControls.setVisibility(View.GONE);
         if (apply) {
-            document = document.withDrawing(pendingPaint, pendingText);
-            Bitmap previous = renderedBitmap;
-            renderedBitmap = ImagePipeline.render(bitmap, document);
-            if (previous != bitmap && previous != renderedBitmap && previous != paintBaseBitmap) previous.recycle();
+            EditDocument nextDocument = document.withDrawing(pendingPaint, pendingText);
+            Bitmap next = ImagePipeline.render(bitmap, nextDocument);
+            acceptDocument(nextDocument, next);
         }
         editorView.setBitmap(renderedBitmap);
         paintBaseBitmap = null;
@@ -467,6 +487,71 @@ public final class MainActivity extends Activity {
                     if (!text.isEmpty()) editorView.addPaintText(text);
                 })
                 .show();
+    }
+
+    private void acceptDocument(EditDocument nextDocument, Bitmap nextBitmap) {
+        if (document != null) {
+            undoHistory.push(document);
+            while (undoHistory.size() > 30) undoHistory.removeLast();
+        }
+        redoHistory.clear();
+        replaceDocument(nextDocument, nextBitmap);
+    }
+
+    private void replaceDocument(EditDocument nextDocument, Bitmap nextBitmap) {
+        Bitmap previous = renderedBitmap;
+        document = nextDocument;
+        renderedBitmap = nextBitmap;
+        editorView.setBitmap(nextBitmap);
+        if (previous != null && previous != bitmap && previous != nextBitmap
+                && previous != cropSurfaceBitmap && previous != filterBaseBitmap
+                && previous != paintBaseBitmap) {
+            previous.recycle();
+        }
+        updateHistoryButtons();
+    }
+
+    private void navigateHistory(boolean undo) {
+        ArrayDeque<EditDocument> source = undo ? undoHistory : redoHistory;
+        if (historyRendering || document == null || source.isEmpty()) return;
+        EditDocument current = document;
+        EditDocument target = source.peek();
+        historyRendering = true;
+        setNormalActionsEnabled(false);
+        worker.execute(() -> {
+            try {
+                Bitmap next = ImagePipeline.render(bitmap, target);
+                runOnUiThread(() -> {
+                    source.pop();
+                    ArrayDeque<EditDocument> destination = undo ? redoHistory : undoHistory;
+                    destination.push(current);
+                    replaceDocument(target, next);
+                    historyRendering = false;
+                    setNormalActionsEnabled(true);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    historyRendering = false;
+                    setNormalActionsEnabled(true);
+                    showError(getString(R.string.error_render_image), error);
+                });
+            }
+        });
+    }
+
+    private void setNormalActionsEnabled(boolean enabled) {
+        openButton.setEnabled(enabled);
+        cropButton.setEnabled(enabled && bitmap != null);
+        filterButton.setEnabled(enabled && bitmap != null);
+        paintButton.setEnabled(enabled && bitmap != null);
+        saveButton.setEnabled(enabled && bitmap != null);
+        updateHistoryButtons();
+    }
+
+    private void updateHistoryButtons() {
+        if (documentUndoButton == null) return;
+        documentUndoButton.setEnabled(!historyRendering && !undoHistory.isEmpty());
+        documentRedoButton.setEnabled(!historyRendering && !redoHistory.isEmpty());
     }
 
     @Override

@@ -10,11 +10,13 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_done">Done</string>
     <string name="action_undo">Undo</string>
+    <string name="action_redo">Redo</string>
     <string name="saved_message">Saved to Pictures/TGImageEditor</string>
     <string name="storage_permission_required">Storage permission is required to save a copy</string>
     <string name="error_with_reason">%1$s: %2$s</string>
     <string name="error_open_image">Unable to open image</string>
     <string name="error_save_image">Unable to save image</string>
+    <string name="error_render_image">Unable to render edit history</string>
     <string name="add_text_title">Add text</string>
     <string name="add_text_hint">Text</string>
     <string name="action_add">Add</string>
