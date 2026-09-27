@@ -23,29 +23,44 @@ public final class ImageDecoder {
             throw new IllegalArgumentException("maxDimension must be positive");
         }
 
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        decodeFileDescriptor(resolver, uri, bounds);
+        BitmapFactory.Options bounds = readBounds(resolver, uri);
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
             throw new IOException("Unsupported or corrupt image");
         }
+        int orientation = readOrientation(resolver, uri);
+        Bitmap normalized = decodeBitmap(resolver, uri, maxDimension, bounds, orientation);
+        boolean swapsSides = orientation == ExifInterface.ORIENTATION_TRANSPOSE
+                || orientation == ExifInterface.ORIENTATION_ROTATE_90
+                || orientation == ExifInterface.ORIENTATION_TRANSVERSE
+                || orientation == ExifInterface.ORIENTATION_ROTATE_270;
+        SourceImage source = new SourceImage(uri.toString(), swapsSides ? bounds.outHeight : bounds.outWidth,
+                swapsSides ? bounds.outWidth : bounds.outHeight);
+        return new DecodedImage(normalized, EditDocument.create(source));
+    }
 
+    public static Bitmap decodeBitmap(ContentResolver resolver, Uri uri, int maxDimension) throws IOException {
+        BitmapFactory.Options bounds = readBounds(resolver, uri);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw new IOException("Unsupported or corrupt image");
+        return decodeBitmap(resolver, uri, maxDimension, bounds, readOrientation(resolver, uri));
+    }
+
+    private static Bitmap decodeBitmap(ContentResolver resolver, Uri uri, int maxDimension,
+                                       BitmapFactory.Options bounds, int orientation) throws IOException {
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inPreferredConfig = Bitmap.Config.ARGB_8888;
         options.inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxDimension);
         Bitmap decoded = decodeFileDescriptor(resolver, uri, options);
-        if (decoded == null) {
-            throw new IOException("Unable to decode image");
-        }
-
-        int orientation = readOrientation(resolver, uri);
+        if (decoded == null) throw new IOException("Unable to decode image");
         Bitmap normalized = normalizeOrientation(decoded, orientation);
-        if (normalized != decoded) {
-            decoded.recycle();
-        }
+        if (normalized != decoded) decoded.recycle();
+        return normalized;
+    }
 
-        SourceImage source = new SourceImage(uri.toString(), normalized.getWidth(), normalized.getHeight());
-        return new DecodedImage(normalized, EditDocument.create(source));
+    private static BitmapFactory.Options readBounds(ContentResolver resolver, Uri uri) throws IOException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        decodeFileDescriptor(resolver, uri, bounds);
+        return bounds;
     }
 
     private static Bitmap decodeFileDescriptor(ContentResolver resolver, Uri uri,

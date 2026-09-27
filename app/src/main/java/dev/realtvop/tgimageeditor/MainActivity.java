@@ -216,8 +216,7 @@ public final class MainActivity extends Activity {
     }
 
     private void saveCopy() {
-        Bitmap snapshot = renderedBitmap;
-        if (snapshot == null) return;
+        if (renderedBitmap == null || document == null) return;
         if (android.os.Build.VERSION.SDK_INT < 29
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_IMAGES);
@@ -228,9 +227,14 @@ public final class MainActivity extends Activity {
         cropButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
+        EditDocument snapshot = document;
         worker.execute(() -> {
             Uri outputUri = null;
+            Bitmap source = null;
+            Bitmap result = null;
             try {
+                source = ImageDecoder.decodeBitmap(getContentResolver(), Uri.parse(snapshot.source().id()), 8192);
+                result = ImagePipeline.render(source, snapshot);
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Images.Media.DISPLAY_NAME, "TGImageEditor_" + System.currentTimeMillis() + ".jpg");
                 values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
@@ -242,7 +246,7 @@ public final class MainActivity extends Activity {
                 if (outputUri == null) throw new IllegalStateException("MediaStore insert failed");
                 try (OutputStream output = getContentResolver().openOutputStream(outputUri, "w")) {
                     if (output == null) throw new IllegalStateException("Unable to open output");
-                    ImageExporter.write(snapshot, output, Bitmap.CompressFormat.JPEG, 95);
+                    ImageExporter.write(result, output, Bitmap.CompressFormat.JPEG, 95);
                 }
                 if (android.os.Build.VERSION.SDK_INT >= 29) {
                     values.clear();
@@ -260,6 +264,9 @@ public final class MainActivity extends Activity {
             } catch (Exception error) {
                 if (outputUri != null) getContentResolver().delete(outputUri, null, null);
                 showError(getString(R.string.error_save_image), error);
+            } finally {
+                if (result != null && result != source) result.recycle();
+                if (source != null) source.recycle();
             }
         });
     }
