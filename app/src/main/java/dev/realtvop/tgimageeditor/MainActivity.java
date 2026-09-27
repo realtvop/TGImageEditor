@@ -23,6 +23,11 @@ import android.widget.Toast;
 import android.widget.EditText;
 
 import java.io.OutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.ArrayList;
@@ -47,7 +52,8 @@ import dev.realtvop.tgimageeditor.ui.PaintControls;
 import dev.realtvop.tgimageeditor.ui.CropControls;
 
 public final class MainActivity extends Activity {
-    private static final String STATE_DOCUMENT = "editor_document";
+    private static final String STATE_DOCUMENT_PATH = "editor_document_path";
+    private static final String STATE_FILE_NAME = "restorable-editor-document.bin";
     private enum Tool { NONE, CROP, FILTER, PAINT }
     private static final int REQUEST_OPEN_IMAGE = 100;
     private static final int REQUEST_WRITE_IMAGES = 101;
@@ -89,14 +95,15 @@ public final class MainActivity extends Activity {
     private final ArrayDeque<EditDocument> redoHistory = new ArrayDeque<>();
     private boolean historyRendering;
     private boolean shareAfterPermission;
+    private volatile boolean destroyed;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(createContent());
+        if (android.os.Build.VERSION.SDK_INT >= 33) Api33Back.register(this);
         if (state != null) {
-            @SuppressWarnings("deprecation")
-            EditDocument restored = (EditDocument) state.getSerializable(STATE_DOCUMENT);
+            EditDocument restored = restoreDocument(state.getString(STATE_DOCUMENT_PATH));
             if (restored != null) loadImage(Uri.parse(restored.source().id()), restored);
         }
     }
@@ -233,6 +240,11 @@ public final class MainActivity extends Activity {
                 Bitmap restoredBitmap = restoredDocument == null
                         ? image.bitmap() : ImagePipeline.render(image.bitmap(), restoredDocument);
                 runOnUiThread(() -> {
+                    if (destroyed) {
+                        if (restoredBitmap != image.bitmap()) restoredBitmap.recycle();
+                        image.bitmap().recycle();
+                        return;
+                    }
                     Bitmap previous = bitmap;
                     Bitmap previousRendered = renderedBitmap;
                     bitmap = image.bitmap();
@@ -264,7 +276,29 @@ public final class MainActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        if (document != null) outState.putSerializable(STATE_DOCUMENT, document);
+        if (document == null) return;
+        File stateFile = new File(getCacheDir(), STATE_FILE_NAME);
+        try (ObjectOutputStream output = new ObjectOutputStream(new FileOutputStream(stateFile))) {
+            output.writeObject(document);
+            outState.putString(STATE_DOCUMENT_PATH, stateFile.getAbsolutePath());
+        } catch (Exception ignored) {
+            // The source remains available through the persisted picker permission.
+        }
+    }
+
+    private EditDocument restoreDocument(String path) {
+        if (path == null) return null;
+        File stateFile = new File(path);
+        try {
+            if (!stateFile.getCanonicalPath().startsWith(getCacheDir().getCanonicalPath() + File.separator)) {
+                return null;
+            }
+            try (ObjectInputStream input = new ObjectInputStream(new FileInputStream(stateFile))) {
+                return (EditDocument) input.readObject();
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private void saveCopy() {
@@ -317,6 +351,7 @@ public final class MainActivity extends Activity {
                 }
                 Uri completedUri = outputUri;
                 runOnUiThread(() -> {
+                    if (destroyed) return;
                     openButton.setEnabled(true);
                     cropButton.setEnabled(true);
                     filterButton.setEnabled(true);
@@ -422,7 +457,7 @@ public final class MainActivity extends Activity {
             Bitmap result = PaintRenderer.render(filtered, document.paintStrokes(), document.textEntities());
             if (filtered != base && filtered != result) filtered.recycle();
             runOnUiThread(() -> {
-                if (generation != filterGeneration || activeTool != Tool.FILTER) {
+                if (destroyed || generation != filterGeneration || activeTool != Tool.FILTER) {
                     if (result != base) result.recycle();
                     return;
                 }
@@ -452,8 +487,10 @@ public final class MainActivity extends Activity {
                 && filterPreviewBitmap != filterBaseBitmap) {
             filterPreviewBitmap.recycle();
         }
+        Bitmap baseToRelease = filterBaseBitmap;
         filterBaseBitmap = null;
         filterPreviewBitmap = null;
+        worker.execute(() -> mainHandler.post(() -> recycleIfTemporary(baseToRelease)));
     }
 
     private void finishTool(boolean apply) {
@@ -500,6 +537,7 @@ public final class MainActivity extends Activity {
             acceptDocument(nextDocument, next);
         }
         editorView.setBitmap(renderedBitmap);
+        recycleIfTemporary(paintBaseBitmap);
         paintBaseBitmap = null;
         pendingPaint = null;
         pendingText = null;
@@ -553,6 +591,10 @@ public final class MainActivity extends Activity {
             try {
                 Bitmap next = ImagePipeline.render(bitmap, target);
                 runOnUiThread(() -> {
+                    if (destroyed) {
+                        if (next != bitmap) next.recycle();
+                        return;
+                    }
                     source.pop();
                     ArrayDeque<EditDocument> destination = undo ? redoHistory : undoHistory;
                     destination.push(current);
@@ -586,6 +628,37 @@ public final class MainActivity extends Activity {
         documentRedoButton.setEnabled(!historyRendering && !redoHistory.isEmpty());
     }
 
+    private void recycleIfTemporary(Bitmap candidate) {
+        if (candidate != null && candidate != bitmap && candidate != renderedBitmap && !candidate.isRecycled()) {
+            candidate.recycle();
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @android.annotation.SuppressLint("GestureBackNavigation")
+    @Override
+    public void onBackPressed() {
+        handleBack();
+    }
+
+    private void handleBack() {
+        if (activeTool != Tool.NONE) {
+            finishTool(false);
+        } else {
+            finishAfterTransition();
+        }
+    }
+
+    private static final class Api33Back {
+        private Api33Back() {}
+
+        @android.annotation.TargetApi(33)
+        static void register(MainActivity activity) {
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, activity::handleBack);
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -602,6 +675,7 @@ public final class MainActivity extends Activity {
 
     private void showError(String message, Exception error) {
         runOnUiThread(() -> {
+            if (destroyed) return;
             openButton.setEnabled(true);
             cropButton.setEnabled(bitmap != null);
             filterButton.setEnabled(bitmap != null);
@@ -618,6 +692,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        destroyed = true;
         mainHandler.removeCallbacksAndMessages(null);
         worker.shutdownNow();
         super.onDestroy();

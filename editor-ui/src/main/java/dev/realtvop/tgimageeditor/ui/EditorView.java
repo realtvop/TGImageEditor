@@ -7,7 +7,7 @@ import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
-/** Stable host for editor tool surfaces. The first milestone renders the normalized source. */
+/** Stable host for the image, crop, paint, and text editing surfaces. */
 public final class EditorView extends FrameLayout {
     private final ImageView imageView;
     private final CropOverlayView cropOverlay;
