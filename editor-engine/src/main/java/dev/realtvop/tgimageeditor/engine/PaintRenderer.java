@@ -32,7 +32,7 @@ public final class PaintRenderer {
         Canvas canvas = new Canvas(output);
         float scale = Math.min(output.getWidth(), output.getHeight());
         for (PaintStroke stroke : strokes) {
-            if (!isNekogramBrush(stroke.kind())) {
+            if (!isNekogramPaint(stroke.kind())) {
                 drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
             }
         }
@@ -42,10 +42,11 @@ public final class PaintRenderer {
         return output;
     }
 
-    private static boolean isNekogramBrush(PaintStroke.Kind kind) {
+    private static boolean isNekogramPaint(PaintStroke.Kind kind) {
         return kind == PaintStroke.Kind.PEN || kind == PaintStroke.Kind.MARKER
                 || kind == PaintStroke.Kind.NEON || kind == PaintStroke.Kind.BLUR
-                || kind == PaintStroke.Kind.ERASER;
+                || kind == PaintStroke.Kind.ERASER || kind == PaintStroke.Kind.ARROW
+                || kind == PaintStroke.Kind.RECTANGLE || kind == PaintStroke.Kind.OVAL;
     }
 
     public static void drawStroke(Canvas canvas, PaintStroke stroke, float width, float height, float widthScale) {
@@ -183,7 +184,7 @@ public final class PaintRenderer {
     }
 
     public static Bitmap createBlurredCopy(Bitmap source, int maximumDimension) {
-        return FilterRenderer.gaussianBlurCopy(source, maximumDimension);
+        return NekogramPaintPipeline.createBlurredCopy(source);
     }
 
     private static Path strokePath(List<PaintPoint> points, float width, float height) {

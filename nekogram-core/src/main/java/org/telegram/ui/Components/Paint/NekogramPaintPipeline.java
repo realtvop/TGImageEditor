@@ -36,7 +36,7 @@ public final class NekogramPaintPipeline {
     public static Bitmap render(Bitmap source, List<PaintStroke> strokes) {
         boolean hasBrushStroke = false;
         for (PaintStroke stroke : strokes) {
-            if (isBrush(stroke.kind())) { hasBrushStroke = true; break; }
+            if (isSupported(stroke.kind())) { hasBrushStroke = true; break; }
         }
         if (!hasBrushStroke) return source;
         synchronized (LOCK) { return renderLocked(source, strokes); }
@@ -72,14 +72,21 @@ public final class NekogramPaintPipeline {
             int framebuffer = genFramebuffer();
             int paintTexture = emptyTexture(width, height);
             int maskTexture = emptyTexture(width, height);
-            int blurredTexture = uploadTexture(createBlurredSource(source));
+            Bitmap blurredSource = createBlurredCopy(source);
+            int blurredTexture = uploadTexture(blurredSource);
+            blurredSource.recycle();
             Map<String, Shader> shaders = ShaderSet.setup();
             Map<Integer, Integer> stampTextures = new HashMap<>();
 
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             for (PaintStroke stroke : strokes) {
-                if (!isBrush(stroke.kind())) continue;
+                if (!isSupported(stroke.kind())) continue;
+                if (!isBrush(stroke.kind())) {
+                    renderShape(stroke, width, height, paintTexture, framebuffer, projection, quad, uv,
+                            shaders.get("shape"));
+                    continue;
+                }
                 Brush brush = brush(stroke.kind());
                 GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
                 GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
@@ -174,6 +181,60 @@ public final class NekogramPaintPipeline {
                 || kind == PaintStroke.Kind.ERASER;
     }
 
+    private static boolean isSupported(PaintStroke.Kind kind) {
+        return isBrush(kind) || kind == PaintStroke.Kind.ARROW
+                || kind == PaintStroke.Kind.RECTANGLE || kind == PaintStroke.Kind.OVAL;
+    }
+
+    private static void renderShape(PaintStroke stroke, int width, int height, int paintTexture,
+                                    int framebuffer, float[] projection, FloatBuffer quad,
+                                    FloatBuffer uv, Shader shader) {
+        PaintPoint first = stroke.points().get(0);
+        PaintPoint last = stroke.points().get(stroke.points().size() - 1);
+        float x1 = first.x() * width, y1 = first.y() * height;
+        float x2 = last.x() * width, y2 = last.y() * height;
+        float cx = (x1 + x2) / 2f, cy = (y1 + y2) / 2f;
+        float rx = Math.abs(x2 - x1) / 2f, ry = Math.abs(y2 - y1) / 2f;
+        float thickness = stroke.width() * Math.min(width, height);
+        int type = stroke.kind() == PaintStroke.Kind.OVAL ? Brush.Shape.SHAPE_TYPE_CIRCLE
+                : stroke.kind() == PaintStroke.Kind.RECTANGLE ? Brush.Shape.SHAPE_TYPE_RECTANGLE
+                : Brush.Shape.SHAPE_TYPE_ARROW;
+        if (type == Brush.Shape.SHAPE_TYPE_ARROW) {
+            cx = x2; cy = y2; rx = x1; ry = y1;
+        }
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, paintTexture, 0);
+        GLES20.glViewport(0, 0, width, height);
+        GLES20.glUseProgram(shader.program);
+        GLES20.glUniformMatrix4fv(shader.getUniform("mvpMatrix"), 1, false, projection, 0);
+        GLES20.glUniform1i(shader.getUniform("texture"), 0);
+        GLES20.glUniform1i(shader.getUniform("type"), type);
+        GLES20.glUniform2f(shader.getUniform("resolution"), width, height);
+        GLES20.glUniform2f(shader.getUniform("center"), cx, cy);
+        GLES20.glUniform2f(shader.getUniform("radius"), rx, ry);
+        GLES20.glUniform1f(shader.getUniform("thickness"), thickness);
+        GLES20.glUniform1f(shader.getUniform("rounding"), Math.min(rx, ry) * .18f);
+        GLES20.glUniform1f(shader.getUniform("rotation"), 0f);
+        GLES20.glUniform2f(shader.getUniform("middle"), (x1 + x2) / 2f, (y1 + y2) / 2f);
+        GLES20.glUniform1f(shader.getUniform("arrowTriangleLength"),
+                Math.max(thickness * 5.5f, (float) Math.hypot(x2 - x1, y2 - y1) / 4f));
+        GLES20.glUniform1i(shader.getUniform("fill"), 0);
+        GLES20.glUniform1i(shader.getUniform("composite"), 1);
+        GLES20.glUniform1i(shader.getUniform("clear"), 0);
+        Shader.SetColorUniform(shader.getUniform("color"), stroke.color());
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, paintTexture);
+        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ZERO);
+        quad.position(0); uv.position(0);
+        GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 8, quad);
+        GLES20.glEnableVertexAttribArray(0);
+        GLES20.glVertexAttribPointer(1, 2, GLES20.GL_FLOAT, false, 8, uv);
+        GLES20.glEnableVertexAttribArray(1);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
     private static int withAlpha(int color, float scale) {
         int alpha = Math.min(255, Math.round(((color >>> 24) & 255) * scale));
         return (color & 0x00ffffff) | (alpha << 24);
@@ -213,7 +274,7 @@ public final class NekogramPaintPipeline {
     }
 
     /** Mirrors Painting.setBrush(Blurer): nearest 1/8 downsample then radius-8 fastBlurMore. */
-    private static Bitmap createBlurredSource(Bitmap source) {
+    public static Bitmap createBlurredCopy(Bitmap source) {
         int width = Math.max(1, source.getWidth() / 8), height = Math.max(1, source.getHeight() / 8);
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
