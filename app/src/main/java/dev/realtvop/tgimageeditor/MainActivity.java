@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.content.pm.PackageManager;
 import android.view.Gravity;
@@ -24,19 +26,26 @@ import dev.realtvop.tgimageeditor.engine.DecodedImage;
 import dev.realtvop.tgimageeditor.engine.ImageDecoder;
 import dev.realtvop.tgimageeditor.engine.ImageExporter;
 import dev.realtvop.tgimageeditor.engine.CropRenderer;
+import dev.realtvop.tgimageeditor.engine.FilterRenderer;
+import dev.realtvop.tgimageeditor.engine.ImagePipeline;
 import dev.realtvop.tgimageeditor.model.CropState;
 import dev.realtvop.tgimageeditor.model.EditDocument;
+import dev.realtvop.tgimageeditor.model.FilterState;
 import dev.realtvop.tgimageeditor.ui.EditorView;
+import dev.realtvop.tgimageeditor.ui.FilterControls;
 
 public final class MainActivity extends Activity {
+    private enum Tool { NONE, CROP, FILTER }
     private static final int REQUEST_OPEN_IMAGE = 100;
     private static final int REQUEST_WRITE_IMAGES = 101;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private EditorView editorView;
     private LinearLayout actions;
     private Button openButton;
     private Button saveButton;
     private Button cropButton;
+    private Button filterButton;
     private Button rotateButton;
     private Button mirrorButton;
     private Button cancelButton;
@@ -44,8 +53,15 @@ public final class MainActivity extends Activity {
     private Bitmap bitmap;
     private Bitmap renderedBitmap;
     private Bitmap cropSurfaceBitmap;
+    private Bitmap filterBaseBitmap;
+    private Bitmap filterPreviewBitmap;
     private EditDocument document;
     private CropState pendingCrop;
+    private FilterState pendingFilter;
+    private FilterControls filterControls;
+    private Tool activeTool = Tool.NONE;
+    private int filterGeneration;
+    private final Runnable renderFilter = this::enqueueFilterPreview;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -58,42 +74,52 @@ public final class MainActivity extends Activity {
         editorView = new EditorView(this);
         root.addView(editorView, new FrameLayout.LayoutParams(-1, -1));
 
+        filterControls = new FilterControls(this);
+        filterControls.setVisibility(View.GONE);
+        FrameLayout.LayoutParams filterParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        filterParams.bottomMargin = dp(64);
+        root.addView(filterControls, filterParams);
+
         actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
         actions.setPadding(dp(12), dp(8), dp(12), dp(8));
 
         openButton = new Button(this);
-        openButton.setText("Open");
+        openButton.setText(R.string.action_open);
         openButton.setOnClickListener(v -> openImage());
         actions.addView(openButton);
 
-        cropButton = actionButton("Crop", v -> beginCrop());
+        cropButton = actionButton(R.string.action_crop, v -> beginCrop());
         cropButton.setEnabled(false);
         actions.addView(cropButton);
 
+        filterButton = actionButton(R.string.action_adjust, v -> beginFilter());
+        filterButton.setEnabled(false);
+        actions.addView(filterButton);
+
         saveButton = new Button(this);
-        saveButton.setText("Save copy");
+        saveButton.setText(R.string.action_save_copy);
         saveButton.setEnabled(false);
         saveButton.setOnClickListener(v -> saveCopy());
         actions.addView(saveButton);
 
-        rotateButton = actionButton("Rotate", v -> updateCrop(pendingCrop.rotateClockwise()));
-        mirrorButton = actionButton("Mirror", v -> updateCrop(pendingCrop.toggleMirror()));
-        cancelButton = actionButton("Cancel", v -> finishCrop(false));
-        doneButton = actionButton("Done", v -> finishCrop(true));
+        rotateButton = actionButton(R.string.action_rotate, v -> updateCrop(pendingCrop.rotateClockwise()));
+        mirrorButton = actionButton(R.string.action_mirror, v -> updateCrop(pendingCrop.toggleMirror()));
+        cancelButton = actionButton(R.string.action_cancel, v -> finishTool(false));
+        doneButton = actionButton(R.string.action_done, v -> finishTool(true));
         actions.addView(rotateButton);
         actions.addView(mirrorButton);
         actions.addView(cancelButton);
         actions.addView(doneButton);
-        setCropActionsVisible(false);
+        setToolActionsVisible(false);
 
         FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         root.addView(actions, actionParams);
         return root;
     }
 
-    private Button actionButton(String label, View.OnClickListener listener) {
+    private Button actionButton(int label, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(label);
         button.setOnClickListener(listener);
@@ -124,6 +150,7 @@ public final class MainActivity extends Activity {
     private void loadImage(Uri uri) {
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
+        filterButton.setEnabled(false);
         saveButton.setEnabled(false);
         worker.execute(() -> {
             try {
@@ -138,13 +165,14 @@ public final class MainActivity extends Activity {
                     openButton.setEnabled(true);
                     saveButton.setEnabled(true);
                     cropButton.setEnabled(true);
+                    filterButton.setEnabled(true);
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
                         previousRendered.recycle();
                     }
                 });
             } catch (Exception error) {
-                showError("Unable to open image", error);
+                showError(getString(R.string.error_open_image), error);
             }
         });
     }
@@ -160,6 +188,7 @@ public final class MainActivity extends Activity {
         saveButton.setEnabled(false);
         openButton.setEnabled(false);
         cropButton.setEnabled(false);
+        filterButton.setEnabled(false);
         worker.execute(() -> {
             Uri outputUri = null;
             try {
@@ -184,12 +213,13 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     openButton.setEnabled(true);
                     cropButton.setEnabled(true);
+                    filterButton.setEnabled(true);
                     saveButton.setEnabled(true);
-                    Toast.makeText(this, "Saved to Pictures/TGImageEditor", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception error) {
                 if (outputUri != null) getContentResolver().delete(outputUri, null, null);
-                showError("Unable to save image", error);
+                showError(getString(R.string.error_save_image), error);
             }
         });
     }
@@ -197,9 +227,10 @@ public final class MainActivity extends Activity {
     private void beginCrop() {
         if (bitmap == null || document == null) return;
         pendingCrop = document.crop();
+        activeTool = Tool.CROP;
         showCropSurface();
         editorView.beginCrop(pendingCrop, crop -> pendingCrop = crop);
-        setCropActionsVisible(true);
+        setToolActionsVisible(true);
     }
 
     private void updateCrop(CropState crop) {
@@ -221,7 +252,7 @@ public final class MainActivity extends Activity {
         editorView.endCrop();
         if (apply) {
             document = document.withCrop(pendingCrop);
-            Bitmap next = CropRenderer.render(bitmap, document.crop());
+            Bitmap next = ImagePipeline.render(bitmap, document);
             if (renderedBitmap != null && renderedBitmap != bitmap && renderedBitmap != next) renderedBitmap.recycle();
             renderedBitmap = next;
         }
@@ -230,17 +261,88 @@ public final class MainActivity extends Activity {
         }
         cropSurfaceBitmap = null;
         editorView.setBitmap(renderedBitmap);
-        setCropActionsVisible(false);
     }
 
-    private void setCropActionsVisible(boolean cropping) {
-        int normalVisibility = cropping ? View.GONE : View.VISIBLE;
-        int cropVisibility = cropping ? View.VISIBLE : View.GONE;
-        for (int index = 0; index < 3; index++) actions.getChildAt(index).setVisibility(normalVisibility);
-        rotateButton.setVisibility(cropVisibility);
-        mirrorButton.setVisibility(cropVisibility);
-        cancelButton.setVisibility(cropVisibility);
-        doneButton.setVisibility(cropVisibility);
+    private void beginFilter() {
+        if (bitmap == null || document == null) return;
+        activeTool = Tool.FILTER;
+        pendingFilter = document.filter();
+        filterBaseBitmap = CropRenderer.render(bitmap, document.crop());
+        filterPreviewBitmap = renderedBitmap;
+        filterControls.bind(pendingFilter, this::scheduleFilterPreview);
+        filterControls.setVisibility(View.VISIBLE);
+        setToolActionsVisible(true);
+    }
+
+    private void scheduleFilterPreview(FilterState filter) {
+        pendingFilter = filter;
+        filterPreviewBitmap = null;
+        doneButton.setEnabled(false);
+        filterGeneration++;
+        mainHandler.removeCallbacks(renderFilter);
+        mainHandler.postDelayed(renderFilter, 50);
+    }
+
+    private void enqueueFilterPreview() {
+        final int generation = filterGeneration;
+        final FilterState filter = pendingFilter;
+        final Bitmap base = filterBaseBitmap;
+        worker.execute(() -> {
+            Bitmap result = FilterRenderer.render(base, filter);
+            runOnUiThread(() -> {
+                if (generation != filterGeneration || activeTool != Tool.FILTER) {
+                    if (result != base) result.recycle();
+                    return;
+                }
+                Bitmap previous = filterPreviewBitmap;
+                filterPreviewBitmap = result;
+                editorView.setBitmap(result);
+                doneButton.setEnabled(true);
+                if (previous != null && previous != renderedBitmap && previous != base && previous != result) {
+                    previous.recycle();
+                }
+            });
+        });
+    }
+
+    private void finishFilter(boolean apply) {
+        mainHandler.removeCallbacks(renderFilter);
+        filterGeneration++;
+        filterControls.setVisibility(View.GONE);
+        if (apply && filterPreviewBitmap != null) {
+            document = document.withFilter(pendingFilter);
+            Bitmap previous = renderedBitmap;
+            renderedBitmap = filterPreviewBitmap;
+            if (previous != bitmap && previous != renderedBitmap && previous != filterBaseBitmap) previous.recycle();
+        } else {
+            editorView.setBitmap(renderedBitmap);
+        }
+        // A cancelled background preview may still be reading the base bitmap.
+        // Release the strong reference and let the runtime reclaim it safely.
+        if (!apply && filterPreviewBitmap != null && filterPreviewBitmap != renderedBitmap
+                && filterPreviewBitmap != filterBaseBitmap) {
+            filterPreviewBitmap.recycle();
+        }
+        filterBaseBitmap = null;
+        filterPreviewBitmap = null;
+    }
+
+    private void finishTool(boolean apply) {
+        if (activeTool == Tool.CROP) finishCrop(apply);
+        if (activeTool == Tool.FILTER) finishFilter(apply);
+        activeTool = Tool.NONE;
+        setToolActionsVisible(false);
+    }
+
+    private void setToolActionsVisible(boolean editing) {
+        int normalVisibility = editing ? View.GONE : View.VISIBLE;
+        for (int index = 0; index < 4; index++) actions.getChildAt(index).setVisibility(normalVisibility);
+        boolean crop = editing && activeTool == Tool.CROP;
+        rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
+        mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
+        cancelButton.setVisibility(editing ? View.VISIBLE : View.GONE);
+        doneButton.setVisibility(editing ? View.VISIBLE : View.GONE);
+        doneButton.setEnabled(true);
     }
 
     @Override
@@ -250,7 +352,7 @@ public final class MainActivity extends Activity {
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             saveCopy();
         } else if (requestCode == REQUEST_WRITE_IMAGES) {
-            Toast.makeText(this, "Storage permission is required to save a copy", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.storage_permission_required, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -258,8 +360,9 @@ public final class MainActivity extends Activity {
         runOnUiThread(() -> {
             openButton.setEnabled(true);
             cropButton.setEnabled(bitmap != null);
+            filterButton.setEnabled(bitmap != null);
             saveButton.setEnabled(bitmap != null);
-            Toast.makeText(this, message + ": " + error.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });
     }
 
@@ -269,6 +372,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null);
         worker.shutdownNow();
         super.onDestroy();
     }

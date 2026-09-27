@@ -47,5 +47,36 @@ public final class FilterState {
     public float shadows() { return shadows; }
     public float vignette() { return vignette; }
     public float grain() { return grain; }
-}
 
+    public boolean isIdentity() {
+        return enhance == 0f && exposure == 0f && contrast == 0f && saturation == 0f
+                && warmth == 0f && fade == 0f && highlights == 0f && shadows == 0f
+                && vignette == 0f && grain == 0f;
+    }
+
+    public FilterState withExposure(float value) {
+        return copy(enhance, value, contrast, saturation, warmth, fade);
+    }
+
+    public FilterState withContrast(float value) {
+        return copy(enhance, exposure, value, saturation, warmth, fade);
+    }
+
+    public FilterState withSaturation(float value) {
+        return copy(enhance, exposure, contrast, value, warmth, fade);
+    }
+
+    public FilterState withWarmth(float value) {
+        return copy(enhance, exposure, contrast, saturation, value, fade);
+    }
+
+    public FilterState withFade(float value) {
+        return copy(enhance, exposure, contrast, saturation, warmth, value);
+    }
+
+    private FilterState copy(float enhance, float exposure, float contrast, float saturation,
+                             float warmth, float fade) {
+        return new FilterState(enhance, exposure, contrast, saturation, warmth, fade,
+                highlights, shadows, vignette, grain);
+    }
+}

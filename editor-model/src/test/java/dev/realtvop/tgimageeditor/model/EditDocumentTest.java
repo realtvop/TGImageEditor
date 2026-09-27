@@ -45,4 +45,13 @@ public class EditDocumentTest {
     public void invalidSourceDimensionsAreRejected() {
         new SourceImage("invalid", 0, 100);
     }
+
+    @Test
+    public void filterUpdatesPreserveOtherParameters() {
+        FilterState state = FilterState.NONE.withExposure(.25f).withSaturation(-.5f);
+        assertEquals(.25f, state.exposure(), .0001f);
+        assertEquals(-.5f, state.saturation(), .0001f);
+        assertEquals(0f, state.contrast(), .0001f);
+        assertTrue(FilterState.NONE.isIdentity());
+    }
 }
