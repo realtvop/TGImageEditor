@@ -22,7 +22,6 @@ import android.util.Size;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.widget.BaseAdapter;
 import android.widget.FrameLayout;
 import android.widget.GridView;
@@ -45,17 +44,18 @@ import dev.realtvop.tgimageeditor.nekogram.NekogramColors;
 public final class GalleryPickerActivity extends Activity {
     private static final int REQUEST_READ_MEDIA = 300;
     private final ArrayList<Photo> photos = new ArrayList<>();
+    private LinearLayout root;
+    private NekogramActionBar actionBar;
+    private FrameLayout content;
     private GridView grid;
     private TextView emptyView;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        Window window = getWindow();
-        window.setStatusBarColor(NekogramColors.surface(this));
-        window.setNavigationBarColor(NekogramColors.surface(this));
         setTitle(getString(R.string.gallery_local_only));
         setContentView(createContent());
+        SystemBars.install(this, root, this::applySystemBarInsets);
         if (hasReadPermission()) {
             loadPhotos();
         } else {
@@ -72,17 +72,17 @@ public final class GalleryPickerActivity extends Activity {
     }
 
     private View createContent() {
-        LinearLayout root = new LinearLayout(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(NekogramColors.surface(this));
 
-        NekogramActionBar bar = new NekogramActionBar(this);
-        bar.setTitle(getString(R.string.gallery_local_only));
-        bar.setBackAction(v -> finish());
-        bar.setAction("", null);
-        root.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));
+        actionBar = new NekogramActionBar(this);
+        actionBar.setTitle(getString(R.string.gallery_local_only));
+        actionBar.setBackAction(v -> finishAfterTransition());
+        actionBar.setAction("", null);
+        root.addView(actionBar, new LinearLayout.LayoutParams(-1, dp(56)));
 
-        FrameLayout content = new FrameLayout(this);
+        content = new FrameLayout(this);
         grid = new GridView(this);
         grid.setNumColumns(3);
         grid.setHorizontalSpacing(dp(2));
@@ -103,6 +103,16 @@ public final class GalleryPickerActivity extends Activity {
         content.addView(emptyView, new FrameLayout.LayoutParams(-1, -1));
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         return root;
+    }
+
+    private void applySystemBarInsets(int left, int top, int right, int bottom) {
+        root.setPadding(left, 0, right, 0);
+        LinearLayout.LayoutParams barParams = (LinearLayout.LayoutParams) actionBar.getLayoutParams();
+        barParams.topMargin = top;
+        actionBar.setLayoutParams(barParams);
+        LinearLayout.LayoutParams contentParams = (LinearLayout.LayoutParams) content.getLayoutParams();
+        contentParams.bottomMargin = bottom;
+        content.setLayoutParams(contentParams);
     }
 
     private boolean hasReadPermission() {

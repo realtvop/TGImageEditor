@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Build;
 import android.provider.MediaStore;
 import android.content.pm.PackageManager;
 import android.view.Gravity;
@@ -64,6 +65,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private EditorView editorView;
+    private FrameLayout contentRoot;
     private LinearLayout actions;
     private NekogramActionBar topBar;
     private View cropButton;
@@ -94,12 +96,18 @@ public final class MainActivity extends Activity {
     private boolean historyRendering;
     private boolean shareAfterPermission;
     private volatile boolean destroyed;
+    private Object backCallback;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(createContent());
-        if (android.os.Build.VERSION.SDK_INT >= 33) Api33Back.register(this);
+        SystemBars.install(this, contentRoot, this::applySystemBarInsets);
+        if (Build.VERSION.SDK_INT >= 34) {
+            backCallback = Api34Back.register(this);
+        } else if (Build.VERSION.SDK_INT >= 33) {
+            backCallback = Api33Back.register(this);
+        }
         if (state != null) {
             EditDocument restored = restoreDocument(state.getString(STATE_DOCUMENT_PATH));
             if (restored != null) {
@@ -113,16 +121,16 @@ public final class MainActivity extends Activity {
     }
 
     private View createContent() {
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0xff000000);
+        contentRoot = new FrameLayout(this);
+        contentRoot.setBackgroundColor(0xff000000);
         editorView = new EditorView(this);
-        root.addView(editorView, new FrameLayout.LayoutParams(-1, -1));
+        contentRoot.addView(editorView, new FrameLayout.LayoutParams(-1, -1));
 
         filterControls = new FilterControls(this);
         filterControls.setVisibility(View.GONE);
         filterControls.setActions(() -> finishTool(false), () -> finishTool(true));
         FrameLayout.LayoutParams filterParams = new FrameLayout.LayoutParams(-1, dp(186), Gravity.BOTTOM);
-        root.addView(filterControls, filterParams);
+        contentRoot.addView(filterControls, filterParams);
 
         paintControls = new PaintControls(this);
         paintControls.setVisibility(View.GONE);
@@ -130,13 +138,13 @@ public final class MainActivity extends Activity {
         paintControls.setTextRequestListener(this::requestText);
         paintControls.setActions(() -> finishTool(false), () -> finishTool(true));
         FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, dp(104), Gravity.BOTTOM);
-        root.addView(paintControls, paintParams);
+        contentRoot.addView(paintControls, paintParams);
 
         cropControls = new CropControls(this);
         cropControls.setVisibility(View.GONE);
         cropControls.setActions(() -> finishTool(false), () -> finishTool(true));
         FrameLayout.LayoutParams cropParams = new FrameLayout.LayoutParams(-1, dp(112), Gravity.BOTTOM);
-        root.addView(cropControls, cropParams);
+        contentRoot.addView(cropControls, cropParams);
 
         actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -176,19 +184,37 @@ public final class MainActivity extends Activity {
         topBar.setBackAction(v -> openImage());
         topBar.setAction(getString(R.string.action_save_copy), v -> saveCopy());
         topBar.setActionEnabled(false);
-        root.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
+        contentRoot.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
 
         FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         actionParams.bottomMargin = dp(8);
-        root.addView(actions, actionParams);
+        contentRoot.addView(actions, actionParams);
 
         paintUndoButton = symbolAction("↶", v -> editorView.undoPaint());
         paintUndoButton.setVisibility(View.GONE);
         FrameLayout.LayoutParams undoParams = new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
         undoParams.leftMargin = dp(8);
         undoParams.topMargin = dp(8);
-        root.addView(paintUndoButton, undoParams);
-        return root;
+        contentRoot.addView(paintUndoButton, undoParams);
+        return contentRoot;
+    }
+
+    private void applySystemBarInsets(int left, int top, int right, int bottom) {
+        setMargins(topBar, left, top, right, 0);
+        setMargins(filterControls, left, 0, right, bottom);
+        setMargins(paintControls, left, 0, right, bottom);
+        setMargins(cropControls, left, 0, right, bottom);
+        setMargins(actions, left, 0, right, bottom + dp(8));
+        setMargins(paintUndoButton, left + dp(8), top + dp(8), right, 0);
+    }
+
+    private void setMargins(View view, int left, int top, int right, int bottom) {
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) view.getLayoutParams();
+        params.leftMargin = left;
+        params.topMargin = top;
+        params.rightMargin = right;
+        params.bottomMargin = bottom;
+        view.setLayoutParams(params);
     }
 
     private ImageView iconAction(NekogramEditorIcons.Icon icon, View.OnClickListener listener) {
@@ -216,7 +242,11 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_OPEN_IMAGE || resultCode != RESULT_OK || data == null || data.getData() == null) {
+        if (requestCode != REQUEST_OPEN_IMAGE) {
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            if (bitmap == null) finishAfterTransition();
             return;
         }
         Uri uri = data.getData();
@@ -685,13 +715,79 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void updateBackPreview(float progress, int swipeEdge) {
+        contentRoot.animate().cancel();
+        float direction = swipeEdge == android.window.BackEvent.EDGE_LEFT ? 1f : -1f;
+        contentRoot.setTranslationX(direction * dp(16) * progress);
+        float scale = 1f - .02f * progress;
+        contentRoot.setScaleX(scale);
+        contentRoot.setScaleY(scale);
+        contentRoot.setAlpha(1f - .08f * progress);
+    }
+
+    private void resetBackPreview(boolean animate) {
+        if (contentRoot == null) return;
+        contentRoot.animate().cancel();
+        if (animate) {
+            contentRoot.animate().translationX(0).scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start();
+        } else {
+            contentRoot.setTranslationX(0);
+            contentRoot.setScaleX(1f);
+            contentRoot.setScaleY(1f);
+            contentRoot.setAlpha(1f);
+        }
+    }
+
     private static final class Api33Back {
         private Api33Back() {}
 
         @android.annotation.SuppressLint({"NewApi", "InlinedApi"})
-        static void register(MainActivity activity) {
+        static Object register(MainActivity activity) {
+            android.window.OnBackInvokedCallback callback = activity::handleBack;
             activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, activity::handleBack);
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return callback;
+        }
+
+        @android.annotation.SuppressLint("NewApi")
+        static void unregister(MainActivity activity, Object callback) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (android.window.OnBackInvokedCallback) callback);
+        }
+    }
+
+    private static final class Api34Back {
+        private Api34Back() {}
+
+        @android.annotation.SuppressLint({"NewApi", "InlinedApi"})
+        static Object register(MainActivity activity) {
+            android.window.OnBackAnimationCallback callback = new android.window.OnBackAnimationCallback() {
+                @Override public void onBackStarted(android.window.BackEvent event) {
+                    activity.resetBackPreview(false);
+                }
+
+                @Override public void onBackProgressed(android.window.BackEvent event) {
+                    activity.updateBackPreview(event.getProgress(), event.getSwipeEdge());
+                }
+
+                @Override public void onBackCancelled() {
+                    activity.resetBackPreview(true);
+                }
+
+                @Override public void onBackInvoked() {
+                    activity.resetBackPreview(false);
+                    activity.handleBack();
+                }
+            };
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return callback;
+        }
+
+        @android.annotation.SuppressLint("NewApi")
+        static void unregister(MainActivity activity, Object callback) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (android.window.OnBackInvokedCallback) callback);
         }
     }
 
@@ -730,6 +826,14 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (backCallback != null) {
+            if (Build.VERSION.SDK_INT >= 34) {
+                Api34Back.unregister(this, backCallback);
+            } else if (Build.VERSION.SDK_INT >= 33) {
+                Api33Back.unregister(this, backCallback);
+            }
+            backCallback = null;
+        }
         mainHandler.removeCallbacksAndMessages(null);
         worker.shutdownNow();
         super.onDestroy();
