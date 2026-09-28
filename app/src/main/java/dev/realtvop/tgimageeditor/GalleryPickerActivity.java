@@ -54,7 +54,7 @@ public final class GalleryPickerActivity extends Activity {
         Window window = getWindow();
         window.setStatusBarColor(NekogramColors.surface(this));
         window.setNavigationBarColor(NekogramColors.surface(this));
-        setTitle(getString(R.string.gallery_title));
+        setTitle(getString(R.string.gallery_local_only));
         setContentView(createContent());
         if (hasReadPermission()) {
             loadPhotos();
@@ -77,7 +77,7 @@ public final class GalleryPickerActivity extends Activity {
         root.setBackgroundColor(NekogramColors.surface(this));
 
         NekogramActionBar bar = new NekogramActionBar(this);
-        bar.setTitle(getString(R.string.gallery_title));
+        bar.setTitle(getString(R.string.gallery_local_only));
         bar.setBackAction(v -> finish());
         bar.setAction("", null);
         root.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));

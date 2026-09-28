@@ -66,12 +66,11 @@ public final class MainActivity extends Activity {
     private EditorView editorView;
     private LinearLayout actions;
     private NekogramActionBar topBar;
-    private View shareButton;
     private View cropButton;
+    private View rotateButton;
+    private View mirrorButton;
     private View filterButton;
     private View paintButton;
-    private View documentUndoButton;
-    private View documentRedoButton;
     private View paintUndoButton;
     private Bitmap bitmap;
     private Bitmap renderedBitmap;
@@ -153,6 +152,16 @@ public final class MainActivity extends Activity {
         cropButton.setEnabled(false);
         actions.addView(cropButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
+        rotateButton = iconAction(NekogramEditorIcons.Icon.ROTATE,
+                v -> applyCropTransform(document.crop().rotateClockwise()));
+        rotateButton.setEnabled(false);
+        actions.addView(rotateButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        mirrorButton = iconAction(NekogramEditorIcons.Icon.FLIP,
+                v -> applyCropTransform(document.crop().toggleMirror()));
+        mirrorButton.setEnabled(false);
+        actions.addView(mirrorButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
         paintButton = iconAction(NekogramEditorIcons.Icon.DRAW, v -> beginPaint());
         paintButton.setEnabled(false);
         actions.addView(paintButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -160,18 +169,6 @@ public final class MainActivity extends Activity {
         filterButton = iconAction(NekogramEditorIcons.Icon.ADJUST, v -> beginFilter());
         filterButton.setEnabled(false);
         actions.addView(filterButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
-
-        documentUndoButton = symbolAction("↶", v -> navigateHistory(true));
-        documentUndoButton.setEnabled(false);
-        actions.addView(documentUndoButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
-
-        documentRedoButton = symbolAction("↷", v -> navigateHistory(false));
-        documentRedoButton.setEnabled(false);
-        actions.addView(documentRedoButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
-
-        shareButton = symbolAction("↗", v -> shareCopy());
-        shareButton.setEnabled(false);
-        actions.addView(shareButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         topBar = new NekogramActionBar(this);
         topBar.setPhotoViewerMode();
@@ -239,10 +236,11 @@ public final class MainActivity extends Activity {
         updateHistoryButtons();
         topBar.setBackEnabled(false);
         cropButton.setEnabled(false);
+        rotateButton.setEnabled(false);
+        mirrorButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
         topBar.setActionEnabled(false);
-        shareButton.setEnabled(false);
         worker.execute(() -> {
             try {
                 DecodedImage image = ImageDecoder.decode(getContentResolver(), uri, 3840);
@@ -266,9 +264,10 @@ public final class MainActivity extends Activity {
                     topBar.setBackEnabled(true);
                     topBar.setActionEnabled(true);
                     cropButton.setEnabled(true);
+                    rotateButton.setEnabled(true);
+                    mirrorButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
-                    shareButton.setEnabled(true);
                     updateHistoryButtons();
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
@@ -329,9 +328,10 @@ public final class MainActivity extends Activity {
         topBar.setActionEnabled(false);
         topBar.setBackEnabled(false);
         cropButton.setEnabled(false);
+        rotateButton.setEnabled(false);
+        mirrorButton.setEnabled(false);
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
-        shareButton.setEnabled(false);
         EditDocument snapshot = document;
         worker.execute(() -> {
             Uri outputUri = null;
@@ -363,10 +363,11 @@ public final class MainActivity extends Activity {
                     if (destroyed) return;
                     topBar.setBackEnabled(true);
                     cropButton.setEnabled(true);
+                    rotateButton.setEnabled(true);
+                    mirrorButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
                     topBar.setActionEnabled(true);
-                    shareButton.setEnabled(true);
                     Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
                     if (share) launchShare(completedUri);
                 });
@@ -387,6 +388,33 @@ public final class MainActivity extends Activity {
         send.setClipData(ClipData.newRawUri(getString(R.string.app_name), uri));
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(Intent.createChooser(send, getString(R.string.share_chooser_title)));
+    }
+
+    private void applyCropTransform(CropState crop) {
+        if (bitmap == null || document == null || historyRendering) return;
+        EditDocument nextDocument = document.withCrop(crop);
+        historyRendering = true;
+        setNormalActionsEnabled(false);
+        worker.execute(() -> {
+            try {
+                Bitmap next = ImagePipeline.render(bitmap, nextDocument);
+                runOnUiThread(() -> {
+                    if (destroyed) {
+                        if (next != bitmap) next.recycle();
+                        return;
+                    }
+                    acceptDocument(nextDocument, next);
+                    historyRendering = false;
+                    setNormalActionsEnabled(true);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    historyRendering = false;
+                    setNormalActionsEnabled(true);
+                    showError(getString(R.string.error_render_image), error);
+                });
+            }
+        });
     }
 
     private void beginCrop() {
@@ -623,17 +651,17 @@ public final class MainActivity extends Activity {
     private void setNormalActionsEnabled(boolean enabled) {
         topBar.setBackEnabled(enabled);
         cropButton.setEnabled(enabled && bitmap != null);
+        rotateButton.setEnabled(enabled && bitmap != null);
+        mirrorButton.setEnabled(enabled && bitmap != null);
         filterButton.setEnabled(enabled && bitmap != null);
         paintButton.setEnabled(enabled && bitmap != null);
         topBar.setActionEnabled(enabled && bitmap != null);
-        shareButton.setEnabled(enabled && bitmap != null);
         updateHistoryButtons();
     }
 
     private void updateHistoryButtons() {
-        if (documentUndoButton == null) return;
-        documentUndoButton.setEnabled(!historyRendering && !undoHistory.isEmpty());
-        documentRedoButton.setEnabled(!historyRendering && !redoHistory.isEmpty());
+        // History remains part of the document model; the photo-viewer toolbar mirrors
+        // Nekogram's five visible media actions and does not add standalone buttons.
     }
 
     private void recycleIfTemporary(Bitmap candidate) {
@@ -686,10 +714,11 @@ public final class MainActivity extends Activity {
             if (destroyed) return;
             topBar.setBackEnabled(true);
             cropButton.setEnabled(bitmap != null);
+            rotateButton.setEnabled(bitmap != null);
+            mirrorButton.setEnabled(bitmap != null);
             filterButton.setEnabled(bitmap != null);
             paintButton.setEnabled(bitmap != null);
             topBar.setActionEnabled(bitmap != null);
-            shareButton.setEnabled(bitmap != null);
             Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });
     }
