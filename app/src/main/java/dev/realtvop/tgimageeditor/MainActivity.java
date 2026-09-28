@@ -710,6 +710,11 @@ public final class MainActivity extends Activity {
     private void handleBack() {
         if (activeTool != Tool.NONE) {
             finishTool(false);
+        } else if (bitmap != null) {
+            // Keep the editor's picker navigation in the task flow. After an image
+            // has been selected, the system back gesture should return to the same
+            // full-screen picker surface instead of finishing the app.
+            openImage();
         } else {
             finishAfterTransition();
         }
