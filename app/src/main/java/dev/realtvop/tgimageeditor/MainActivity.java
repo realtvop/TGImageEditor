@@ -108,7 +108,11 @@ public final class MainActivity extends Activity {
         } else if (Build.VERSION.SDK_INT >= 33) {
             backCallback = Api33Back.register(this);
         }
-        if (state != null) {
+        Uri sharedImage = imageFromIntent(getIntent());
+        if (sharedImage != null) {
+            takePersistableReadPermission(sharedImage);
+            loadImage(sharedImage);
+        } else if (state != null) {
             EditDocument restored = restoreDocument(state.getString(STATE_DOCUMENT_PATH));
             if (restored != null) {
                 loadImage(Uri.parse(restored.source().id()), restored);
@@ -118,6 +122,17 @@ public final class MainActivity extends Activity {
         } else {
             openImage();
         }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri sharedImage = imageFromIntent(intent);
+        if (sharedImage == null) return;
+        if (activeTool != Tool.NONE) finishTool(false);
+        takePersistableReadPermission(sharedImage);
+        loadImage(sharedImage);
     }
 
     private View createContent() {
@@ -250,11 +265,26 @@ public final class MainActivity extends Activity {
             return;
         }
         Uri uri = data.getData();
+        takePersistableReadPermission(uri);
+        loadImage(uri);
+    }
+
+    private Uri imageFromIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return null;
+        String type = intent.getType();
+        if (type != null && !type.startsWith("image/")) return null;
+        @SuppressWarnings("deprecation")
+        Object extra = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        if (extra instanceof Uri) return (Uri) extra;
+        return intent.getData();
+    }
+
+    private void takePersistableReadPermission(Uri uri) {
         try {
             getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (SecurityException ignored) {
+            // Many share providers grant a temporary read permission only.
         }
-        loadImage(uri);
     }
 
     private void loadImage(Uri uri) {
