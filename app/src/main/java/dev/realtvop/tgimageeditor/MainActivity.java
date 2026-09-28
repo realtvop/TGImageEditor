@@ -26,6 +26,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -94,9 +95,10 @@ public final class MainActivity extends Activity {
     private final ArrayDeque<EditDocument> undoHistory = new ArrayDeque<>();
     private final ArrayDeque<EditDocument> redoHistory = new ArrayDeque<>();
     private boolean historyRendering;
-    private boolean shareAfterPermission;
     private volatile boolean destroyed;
     private Object backCallback;
+    private Uri activeShareUri;
+    private boolean awaitingShareReturn;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -121,6 +123,16 @@ public final class MainActivity extends Activity {
             }
         } else {
             openImage();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (awaitingShareReturn && activeShareUri != null) {
+            ShareContentProvider.release(activeShareUri);
+            activeShareUri = null;
+            awaitingShareReturn = false;
         }
     }
 
@@ -198,7 +210,9 @@ public final class MainActivity extends Activity {
         topBar.setTitle(getString(R.string.app_name));
         topBar.setBackAction(v -> openImage());
         topBar.setAction(getString(R.string.action_save_copy), v -> saveCopy());
+        topBar.setSecondaryAction(getString(R.string.action_share), v -> shareCopy());
         topBar.setActionEnabled(false);
+        topBar.setSecondaryActionEnabled(false);
         contentRoot.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
 
         FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -301,6 +315,7 @@ public final class MainActivity extends Activity {
         filterButton.setEnabled(false);
         paintButton.setEnabled(false);
         topBar.setActionEnabled(false);
+        topBar.setSecondaryActionEnabled(false);
         worker.execute(() -> {
             try {
                 DecodedImage image = ImageDecoder.decode(getContentResolver(), uri, 3840);
@@ -322,13 +337,13 @@ public final class MainActivity extends Activity {
                     renderedBitmap = restoredBitmap;
                     editorView.setBitmap(renderedBitmap);
                     topBar.setBackEnabled(true);
-                    topBar.setActionEnabled(true);
                     cropButton.setEnabled(true);
                     rotateButton.setEnabled(true);
                     mirrorButton.setEnabled(true);
                     filterButton.setEnabled(true);
                     paintButton.setEnabled(true);
                     updateHistoryButtons();
+                    setExportActionsEnabled(true);
                     if (previous != null && previous != bitmap) previous.recycle();
                     if (previousRendered != null && previousRendered != previous && previousRendered != bitmap) {
                         previousRendered.recycle();
@@ -370,28 +385,50 @@ public final class MainActivity extends Activity {
     }
 
     private void saveCopy() {
-        exportCopy(false);
+        exportCopy();
     }
 
     private void shareCopy() {
-        exportCopy(true);
+        if (renderedBitmap == null || document == null) return;
+        setEditingActionsEnabled(false);
+        EditDocument snapshot = document;
+        worker.execute(() -> {
+            Bitmap source = null;
+            Bitmap result = null;
+            Uri shareUri = null;
+            try {
+                source = ImageDecoder.decodeBitmap(getContentResolver(), Uri.parse(snapshot.source().id()), 8192);
+                result = ImagePipeline.render(source, snapshot);
+                ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+                ImageExporter.write(result, encoded, Bitmap.CompressFormat.JPEG, 95);
+                shareUri = ShareContentProvider.publish(this, encoded.toByteArray());
+                Uri completedUri = shareUri;
+                runOnUiThread(() -> {
+                    if (destroyed) {
+                        ShareContentProvider.release(completedUri);
+                        return;
+                    }
+                    setEditingActionsEnabled(true);
+                    launchShare(completedUri);
+                });
+            } catch (Exception error) {
+                if (shareUri != null) ShareContentProvider.release(shareUri);
+                showError(getString(R.string.error_share_image), error);
+            } finally {
+                if (result != null && result != source) result.recycle();
+                if (source != null) source.recycle();
+            }
+        });
     }
 
-    private void exportCopy(boolean share) {
+    private void exportCopy() {
         if (renderedBitmap == null || document == null) return;
         if (android.os.Build.VERSION.SDK_INT < 29
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            shareAfterPermission = share;
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_WRITE_IMAGES);
             return;
         }
-        topBar.setActionEnabled(false);
-        topBar.setBackEnabled(false);
-        cropButton.setEnabled(false);
-        rotateButton.setEnabled(false);
-        mirrorButton.setEnabled(false);
-        filterButton.setEnabled(false);
-        paintButton.setEnabled(false);
+        setEditingActionsEnabled(false);
         EditDocument snapshot = document;
         worker.execute(() -> {
             Uri outputUri = null;
@@ -421,15 +458,8 @@ public final class MainActivity extends Activity {
                 Uri completedUri = outputUri;
                 runOnUiThread(() -> {
                     if (destroyed) return;
-                    topBar.setBackEnabled(true);
-                    cropButton.setEnabled(true);
-                    rotateButton.setEnabled(true);
-                    mirrorButton.setEnabled(true);
-                    filterButton.setEnabled(true);
-                    paintButton.setEnabled(true);
-                    topBar.setActionEnabled(true);
+                    setEditingActionsEnabled(true);
                     Toast.makeText(this, R.string.saved_message, Toast.LENGTH_SHORT).show();
-                    if (share) launchShare(completedUri);
                 });
             } catch (Exception error) {
                 if (outputUri != null) getContentResolver().delete(outputUri, null, null);
@@ -447,7 +477,16 @@ public final class MainActivity extends Activity {
         send.putExtra(Intent.EXTRA_STREAM, uri);
         send.setClipData(ClipData.newRawUri(getString(R.string.app_name), uri));
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(send, getString(R.string.share_chooser_title)));
+        activeShareUri = uri;
+        awaitingShareReturn = true;
+        try {
+            startActivity(Intent.createChooser(send, getString(R.string.share_chooser_title)));
+        } catch (RuntimeException error) {
+            awaitingShareReturn = false;
+            activeShareUri = null;
+            ShareContentProvider.release(uri);
+            showError(getString(R.string.error_share_image), error);
+        }
     }
 
     private void applyCropTransform(CropState crop) {
@@ -715,8 +754,24 @@ public final class MainActivity extends Activity {
         mirrorButton.setEnabled(enabled && bitmap != null);
         filterButton.setEnabled(enabled && bitmap != null);
         paintButton.setEnabled(enabled && bitmap != null);
-        topBar.setActionEnabled(enabled && bitmap != null);
+        setExportActionsEnabled(enabled);
         updateHistoryButtons();
+    }
+
+    private void setExportActionsEnabled(boolean enabled) {
+        boolean active = enabled && bitmap != null;
+        topBar.setActionEnabled(active);
+        topBar.setSecondaryActionEnabled(active);
+    }
+
+    private void setEditingActionsEnabled(boolean enabled) {
+        topBar.setBackEnabled(enabled);
+        cropButton.setEnabled(enabled && bitmap != null);
+        rotateButton.setEnabled(enabled && bitmap != null);
+        mirrorButton.setEnabled(enabled && bitmap != null);
+        filterButton.setEnabled(enabled && bitmap != null);
+        paintButton.setEnabled(enabled && bitmap != null);
+        setExportActionsEnabled(enabled);
     }
 
     private void updateHistoryButtons() {
@@ -831,11 +886,8 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_WRITE_IMAGES && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            boolean share = shareAfterPermission;
-            shareAfterPermission = false;
-            exportCopy(share);
+            exportCopy();
         } else if (requestCode == REQUEST_WRITE_IMAGES) {
-            shareAfterPermission = false;
             Toast.makeText(this, R.string.storage_permission_required, Toast.LENGTH_LONG).show();
         }
     }
@@ -849,7 +901,7 @@ public final class MainActivity extends Activity {
             mirrorButton.setEnabled(bitmap != null);
             filterButton.setEnabled(bitmap != null);
             paintButton.setEnabled(bitmap != null);
-            topBar.setActionEnabled(bitmap != null);
+            setExportActionsEnabled(true);
             Toast.makeText(this, getString(R.string.error_with_reason, message, error.getMessage()), Toast.LENGTH_LONG).show();
         });
     }

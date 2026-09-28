@@ -16,6 +16,7 @@ public final class NekogramActionBar extends FrameLayout {
     private final BackView back;
     private final TextView title;
     private final TextView action;
+    private final TextView secondaryAction;
 
     public NekogramActionBar(Context context) {
         super(context);
@@ -32,7 +33,6 @@ public final class NekogramActionBar extends FrameLayout {
         title.setSingleLine(true);
         LayoutParams titleParams = params(LayoutParams.MATCH_PARENT, dp(56), Gravity.TOP);
         titleParams.leftMargin = dp(56);
-        titleParams.rightMargin = dp(88);
         addView(title, titleParams);
 
         action = new TextView(context);
@@ -42,6 +42,19 @@ public final class NekogramActionBar extends FrameLayout {
         action.setSingleLine(true);
         action.setBackground(ripple(context));
         addView(action, params(dp(88), dp(56), Gravity.END | Gravity.TOP));
+
+        secondaryAction = new TextView(context);
+        secondaryAction.setTextColor(NekogramColors.accent(context));
+        secondaryAction.setTextSize(14);
+        secondaryAction.setGravity(Gravity.CENTER);
+        secondaryAction.setSingleLine(true);
+        secondaryAction.setBackground(ripple(context));
+        LayoutParams secondaryParams = params(dp(88), dp(56), Gravity.END | Gravity.TOP);
+        secondaryParams.rightMargin = dp(88);
+        addView(secondaryAction, secondaryParams);
+        action.setVisibility(GONE);
+        secondaryAction.setVisibility(GONE);
+        updateTitleMargins();
     }
 
     public void setTitle(CharSequence value) { title.setText(value); }
@@ -49,15 +62,34 @@ public final class NekogramActionBar extends FrameLayout {
         action.setText(value);
         action.setOnClickListener(listener);
         action.setVisibility(value == null || value.length() == 0 ? GONE : VISIBLE);
+        updateTitleMargins();
+    }
+    public void setSecondaryAction(CharSequence value, OnClickListener listener) {
+        secondaryAction.setText(value);
+        secondaryAction.setOnClickListener(listener);
+        secondaryAction.setVisibility(value == null || value.length() == 0 ? GONE : VISIBLE);
+        updateTitleMargins();
     }
     public void setBackAction(OnClickListener listener) { back.setOnClickListener(listener); }
     public void setBackEnabled(boolean enabled) { back.setEnabled(enabled); back.setAlpha(enabled ? 1f : .5f); }
     public void setActionEnabled(boolean enabled) { action.setEnabled(enabled); action.setAlpha(enabled ? 1f : .5f); }
+    public void setSecondaryActionEnabled(boolean enabled) {
+        secondaryAction.setEnabled(enabled);
+        secondaryAction.setAlpha(enabled ? 1f : .5f);
+    }
     public void setPhotoViewerMode() {
         setBackgroundColor(0xcc000000);
         back.setColor(0xffffffff);
         title.setTextColor(0xffffffff);
         action.setTextColor(0xff51bdf3);
+        secondaryAction.setTextColor(0xff51bdf3);
+    }
+
+    private void updateTitleMargins() {
+        LayoutParams params = (LayoutParams) title.getLayoutParams();
+        params.rightMargin = (action.getVisibility() == VISIBLE ? dp(88) : 0)
+                + (secondaryAction.getVisibility() == VISIBLE ? dp(88) : 0);
+        title.setLayoutParams(params);
     }
 
     private static LayoutParams params(int width, int height, int gravity) {

@@ -18,6 +18,7 @@
     <string name="error_with_reason">%1$s: %2$s</string>
     <string name="error_open_image">Unable to open image</string>
     <string name="error_save_image">Unable to save image</string>
+    <string name="error_share_image">Unable to share image</string>
     <string name="error_render_image">Unable to render edit history</string>
     <string name="add_text_title">Add text</string>
     <string name="add_text_hint">Text</string>

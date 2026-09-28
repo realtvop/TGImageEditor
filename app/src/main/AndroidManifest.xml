@@ -28,5 +28,10 @@
             android:name=".GalleryPickerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <provider
+            android:name=".ShareContentProvider"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
