@@ -49,6 +49,7 @@ public final class GalleryPickerActivity extends Activity {
     private FrameLayout content;
     private GridView grid;
     private TextView emptyView;
+    private Object backCallback;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -56,6 +57,11 @@ public final class GalleryPickerActivity extends Activity {
         setTitle(getString(R.string.gallery_local_only));
         setContentView(createContent());
         SystemBars.install(this, root, this::applySystemBarInsets);
+        if (Build.VERSION.SDK_INT >= 34) {
+            backCallback = Api34Back.register(this);
+        } else if (Build.VERSION.SDK_INT >= 33) {
+            backCallback = Api33Back.register(this);
+        }
         if (hasReadPermission()) {
             loadPhotos();
         } else {
@@ -63,8 +69,50 @@ public final class GalleryPickerActivity extends Activity {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    @android.annotation.SuppressLint("GestureBackNavigation")
+    @Override
+    public void onBackPressed() {
+        handleBack();
+    }
+
+    private void handleBack() {
+        finishAfterTransition();
+    }
+
+    private void updateBackPreview(float progress, int swipeEdge) {
+        root.animate().cancel();
+        float direction = swipeEdge == android.window.BackEvent.EDGE_LEFT ? 1f : -1f;
+        root.setTranslationX(direction * dp(16) * progress);
+        float scale = 1f - .02f * progress;
+        root.setScaleX(scale);
+        root.setScaleY(scale);
+        root.setAlpha(1f - .08f * progress);
+    }
+
+    private void resetBackPreview(boolean animate) {
+        if (root == null) return;
+        root.animate().cancel();
+        if (animate) {
+            root.animate().translationX(0).scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start();
+        } else {
+            root.setTranslationX(0);
+            root.setScaleX(1f);
+            root.setScaleY(1f);
+            root.setAlpha(1f);
+        }
+    }
+
     @Override
     protected void onDestroy() {
+        if (backCallback != null) {
+            if (Build.VERSION.SDK_INT >= 34) {
+                Api34Back.unregister(this, backCallback);
+            } else if (Build.VERSION.SDK_INT >= 33) {
+                Api33Back.unregister(this, backCallback);
+            }
+            backCallback = null;
+        }
         if (grid != null && grid.getAdapter() instanceof PhotoAdapter) {
             ((PhotoAdapter) grid.getAdapter()).shutdown();
         }
@@ -78,7 +126,7 @@ public final class GalleryPickerActivity extends Activity {
 
         actionBar = new NekogramActionBar(this);
         actionBar.setTitle(getString(R.string.gallery_local_only));
-        actionBar.setBackAction(v -> finishAfterTransition());
+        actionBar.setBackAction(v -> handleBack());
         actionBar.setAction("", null);
         root.addView(actionBar, new LinearLayout.LayoutParams(-1, dp(56)));
 
@@ -175,6 +223,59 @@ public final class GalleryPickerActivity extends Activity {
         result.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         setResult(RESULT_OK, result);
         finish();
+    }
+
+    private static final class Api33Back {
+        private Api33Back() {}
+
+        @android.annotation.SuppressLint({"NewApi", "InlinedApi"})
+        static Object register(GalleryPickerActivity activity) {
+            android.window.OnBackInvokedCallback callback = activity::handleBack;
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return callback;
+        }
+
+        @android.annotation.SuppressLint("NewApi")
+        static void unregister(GalleryPickerActivity activity, Object callback) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (android.window.OnBackInvokedCallback) callback);
+        }
+    }
+
+    private static final class Api34Back {
+        private Api34Back() {}
+
+        @android.annotation.SuppressLint({"NewApi", "InlinedApi"})
+        static Object register(GalleryPickerActivity activity) {
+            android.window.OnBackAnimationCallback callback = new android.window.OnBackAnimationCallback() {
+                @Override public void onBackStarted(android.window.BackEvent event) {
+                    activity.resetBackPreview(false);
+                }
+
+                @Override public void onBackProgressed(android.window.BackEvent event) {
+                    activity.updateBackPreview(event.getProgress(), event.getSwipeEdge());
+                }
+
+                @Override public void onBackCancelled() {
+                    activity.resetBackPreview(true);
+                }
+
+                @Override public void onBackInvoked() {
+                    activity.resetBackPreview(false);
+                    activity.handleBack();
+                }
+            };
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return callback;
+        }
+
+        @android.annotation.SuppressLint("NewApi")
+        static void unregister(GalleryPickerActivity activity, Object callback) {
+            activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                    (android.window.OnBackInvokedCallback) callback);
+        }
     }
 
     private int dp(int value) {
