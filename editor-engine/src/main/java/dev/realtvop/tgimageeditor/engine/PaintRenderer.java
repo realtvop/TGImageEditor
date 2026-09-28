@@ -30,15 +30,47 @@ public final class PaintRenderer {
 
     public static Bitmap render(Bitmap source, List<PaintStroke> strokes, List<TextEntity> textEntities) {
         if (strokes.isEmpty() && textEntities.isEmpty()) return source;
-        Bitmap painted = NekogramPaintPipeline.render(source, strokes);
-        Bitmap output = painted == source ? source.copy(Bitmap.Config.ARGB_8888, true) : painted;
-        Canvas canvas = new Canvas(output);
-        float scale = output.getWidth();
-        for (PaintStroke stroke : strokes) {
-            if (!isNekogramPaint(stroke.kind())) {
-                drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
+        // Keep blur strokes on the same Canvas path used by PaintOverlayView. The
+        // GLES blurer has a different mask/alpha sampling path, which made the
+        // exported edge visibly different from the editor preview. Split the
+        // stroke list around blur strokes so stroke order remains stable while
+        // ordinary Nekogram brushes still use the upstream renderer.
+        Bitmap output = source.copy(Bitmap.Config.ARGB_8888, true);
+        Bitmap blurredSource = null;
+        int segmentStart = 0;
+        for (int i = 0; i <= strokes.size(); i++) {
+            boolean blurBoundary = i == strokes.size()
+                    || strokes.get(i).kind() == PaintStroke.Kind.BLUR;
+            if (!blurBoundary) continue;
+
+            if (segmentStart < i) {
+                List<PaintStroke> segment = strokes.subList(segmentStart, i);
+                Bitmap next = NekogramPaintPipeline.render(output, segment);
+                if (next != output) {
+                    output.recycle();
+                    output = next;
+                }
+                Canvas canvas = new Canvas(output);
+                float scale = output.getWidth();
+                for (PaintStroke stroke : segment) {
+                    if (!isNekogramPaint(stroke.kind())) {
+                        drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
+                    }
+                }
             }
+
+            if (i < strokes.size()) {
+                if (blurredSource == null) {
+                    blurredSource = createBlurredCopy(source, 640);
+                }
+                drawBlurStroke(new Canvas(output), strokes.get(i), blurredSource,
+                        output.getWidth(), output.getHeight(), output.getWidth());
+            }
+            segmentStart = i + 1;
         }
+
+        if (blurredSource != null && !blurredSource.isRecycled()) blurredSource.recycle();
+        Canvas canvas = new Canvas(output);
         for (TextEntity entity : textEntities) {
             TextRenderer.draw(canvas, entity, output.getWidth(), output.getHeight());
         }
