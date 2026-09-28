@@ -3,6 +3,8 @@ package dev.realtvop.tgimageeditor.engine;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.BitmapShader;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -17,6 +19,7 @@ import dev.realtvop.tgimageeditor.model.PaintPoint;
 import dev.realtvop.tgimageeditor.model.PaintStroke;
 import dev.realtvop.tgimageeditor.model.TextEntity;
 import org.telegram.ui.Components.Paint.NekogramPaintPipeline;
+import org.telegram.ui.Components.Paint.Brush;
 
 public final class PaintRenderer {
     private PaintRenderer() {}
@@ -30,7 +33,7 @@ public final class PaintRenderer {
         Bitmap painted = NekogramPaintPipeline.render(source, strokes);
         Bitmap output = painted == source ? source.copy(Bitmap.Config.ARGB_8888, true) : painted;
         Canvas canvas = new Canvas(output);
-        float scale = Math.min(output.getWidth(), output.getHeight());
+        float scale = output.getWidth();
         for (PaintStroke stroke : strokes) {
             if (!isNekogramPaint(stroke.kind())) {
                 drawStroke(canvas, stroke, output.getWidth(), output.getHeight(), scale);
@@ -170,17 +173,69 @@ public final class PaintRenderer {
 
     public static void drawBlurStroke(Canvas canvas, PaintStroke stroke, Bitmap blurred,
                                       float width, float height, float widthScale) {
+        int layer = canvas.saveLayer(0, 0, width, height, null);
+        Paint mask = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG | Paint.FILTER_BITMAP_FLAG);
+        // PAINT_BRUSH_FSH uses the stamp's red channel as mask alpha. The source
+        // WebP is opaque, so drawing it as an ordinary Android bitmap would make
+        // every stamp's full rectangular bounds opaque.
+        ColorMatrix redToAlpha = new ColorMatrix(new float[]{
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                1, 0, 0, 0, 0
+        });
+        mask.setColorFilter(new ColorMatrixColorFilter(redToAlpha));
+        Bitmap stamp = new Brush.Blurer().getStamp();
+        drawBlurMask(canvas, stroke, stamp, mask, width, height, stroke.width() * widthScale);
+        stamp.recycle();
+
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG | Paint.FILTER_BITMAP_FLAG);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeJoin(Paint.Join.ROUND);
-        paint.setStrokeWidth(stroke.width() * widthScale * 1.8f);
         BitmapShader shader = new BitmapShader(blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
         Matrix matrix = new Matrix();
         matrix.setScale(width / blurred.getWidth(), height / blurred.getHeight());
         shader.setLocalMatrix(matrix);
         paint.setShader(shader);
-        canvas.drawPath(strokePath(stroke.points(), width, height), paint);
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        canvas.drawRect(0, 0, width, height, paint);
+        canvas.restoreToCount(layer);
+    }
+
+    private static void drawBlurMask(Canvas canvas, PaintStroke stroke, Bitmap stamp, Paint paint,
+                                     float width, float height, float radius) {
+        List<PaintPoint> points = stroke.points();
+        if (points.size() == 1) {
+            drawBlurStamp(canvas, stamp, paint, points.get(0).x() * width, points.get(0).y() * height, radius);
+            return;
+        }
+        double remainder = 0;
+        double step = Math.max(1f, .15f * radius);
+        for (int i = 0; i < points.size() - 1; i++) {
+            PaintPoint first = points.get(i);
+            PaintPoint second = points.get(i + 1);
+            float x1 = first.x() * width;
+            float y1 = first.y() * height;
+            float x2 = second.x() * width;
+            float y2 = second.y() * height;
+            double dx = x2 - x1;
+            double dy = y2 - y1;
+            double distance = Math.hypot(dx, dy);
+            double unitX = distance == 0 ? 1 : dx / distance;
+            double unitY = distance == 0 ? 1 : dy / distance;
+            double travelled = remainder;
+            while (travelled <= distance) {
+                drawBlurStamp(canvas, stamp, paint, (float) (x1 + unitX * travelled),
+                        (float) (y1 + unitY * travelled), radius);
+                travelled += step;
+            }
+            if (i == points.size() - 2) {
+                drawBlurStamp(canvas, stamp, paint, x2, y2, radius);
+            }
+            remainder = travelled - distance;
+        }
+    }
+
+    private static void drawBlurStamp(Canvas canvas, Bitmap stamp, Paint paint, float x, float y, float radius) {
+        canvas.drawBitmap(stamp, null, new RectF(x - radius, y - radius, x + radius, y + radius), paint);
     }
 
     public static Bitmap createBlurredCopy(Bitmap source, int maximumDimension) {

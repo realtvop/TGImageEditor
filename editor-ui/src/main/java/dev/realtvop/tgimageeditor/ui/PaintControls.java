@@ -136,7 +136,11 @@ public final class PaintControls extends FrameLayout {
         selected = button;
         selected.setSelected(true);
         kind = button.kind;
-        width = kind == PaintStroke.Kind.MARKER ? .018f : kind == PaintStroke.Kind.ERASER || kind == PaintStroke.Kind.BLUR ? .024f : .012f;
+        width = kind == PaintStroke.Kind.MARKER || kind == PaintStroke.Kind.NEON
+                ? (8f + 90f * .5f) / 2048f
+                : kind == PaintStroke.Kind.ERASER || kind == PaintStroke.Kind.BLUR
+                ? (8f + 90f) / 2048f
+                : (8f + 90f * .25f) / 2048f;
         selectTab(false);
         notifyChanged();
     }

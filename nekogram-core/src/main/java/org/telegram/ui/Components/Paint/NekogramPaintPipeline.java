@@ -78,6 +78,12 @@ public final class NekogramPaintPipeline {
             Map<String, Shader> shaders = ShaderSet.setup();
             Map<Integer, Integer> stampTextures = new HashMap<>();
 
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
+            GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                    GLES20.GL_TEXTURE_2D, paintTexture, 0);
+            GLES20.glViewport(0, 0, width, height);
+            GLES20.glClearColor(0, 0, 0, 0);
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             for (PaintStroke stroke : strokes) {
@@ -163,7 +169,7 @@ public final class NekogramPaintPipeline {
             points[i] = new Point(point.x() * width, point.y() * height, 1, i == 0 || i == points.length - 1);
         }
         Path path = new Path(points);
-        path.setup(stroke.color(), stroke.width() * Math.min(width, height), brush);
+        path.setup(stroke.color(), stroke.width() * width, brush);
         return path;
     }
 
@@ -195,7 +201,7 @@ public final class NekogramPaintPipeline {
         float x2 = last.x() * width, y2 = last.y() * height;
         float cx = (x1 + x2) / 2f, cy = (y1 + y2) / 2f;
         float rx = Math.abs(x2 - x1) / 2f, ry = Math.abs(y2 - y1) / 2f;
-        float thickness = stroke.width() * Math.min(width, height);
+        float thickness = stroke.width() * width;
         int type = stroke.kind() == PaintStroke.Kind.OVAL ? Brush.Shape.SHAPE_TYPE_CIRCLE
                 : stroke.kind() == PaintStroke.Kind.RECTANGLE ? Brush.Shape.SHAPE_TYPE_RECTANGLE
                 : Brush.Shape.SHAPE_TYPE_ARROW;
@@ -273,56 +279,127 @@ public final class NekogramPaintPipeline {
         FloatBuffer result = bytes.asFloatBuffer(); result.put(values); result.position(0); return result;
     }
 
-    /** Mirrors Painting.setBrush(Blurer): nearest 1/8 downsample then radius-8 fastBlurMore. */
+    /** Mirrors Painting.setBrush(Blurer): 1/8 downsample then Utilities.stackBlurBitmap(..., 8). */
     public static Bitmap createBlurredCopy(Bitmap source) {
         int width = Math.max(1, source.getWidth() / 8), height = Math.max(1, source.getHeight() / 8);
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         canvas.drawBitmap(source, null, new Rect(0, 0, width, height), null);
-        stackBlurMore(bitmap, 8);
+        stackBlur(bitmap, 8);
         return bitmap;
     }
 
-    private static void stackBlurMore(Bitmap bitmap, int radius) {
-        int width = bitmap.getWidth(), height = bitmap.getHeight(), r1 = radius + 1;
-        if (radius > 15 || radius * 2 + 1 >= width || radius * 2 + 1 >= height
-                || width * height > 150 * 150) return;
-        int[] pixels = new int[width * height];
+    private static void stackBlur(Bitmap bitmap, int radius) {
+        if (radius < 1) return;
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int widthMax = width - 1;
+        int heightMax = height - 1;
+        int pixelCount = width * height;
+        int div = radius * 2 + 1;
+        int radiusPlusOne = radius + 1;
+        int divSum = ((div + 1) >> 1);
+        divSum *= divSum;
+
+        int[] pixels = new int[pixelCount];
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
-        int[] output = new int[pixels.length];
-        int[] source = new int[pixels.length];
-        for (int channel = 0; channel < 4; channel++) {
-            int shift = channel == 0 ? 0 : channel == 1 ? 8 : channel == 2 ? 16 : 24;
-            for (int i = 0; i < pixels.length; i++) source[i] = (pixels[i] >>> shift) & 255;
-            int[] horizontal = new int[pixels.length];
-            for (int y = 0; y < height; y++) {
-                int row = y * width;
-                long current = source[row], all = -radius * current;
-                long sum = current * ((r1 * (r1 + 1)) >> 1);
-                for (int i = 1; i <= radius; i++) { current = source[row + i]; sum += current * (r1 - i); all += current; }
-                for (int x = 0; x < width; x++) {
-                    horizontal[row + x] = (int) ((sum >> 6) & 255);
-                    int start = x < r1 ? 0 : x - r1;
-                    int end = x < width - r1 ? x + r1 : width - 1;
-                    all += source[row + start] - 2L * source[row + x] + source[row + end];
-                    sum += all;
+        int[] red = new int[pixelCount];
+        int[] green = new int[pixelCount];
+        int[] blue = new int[pixelCount];
+        int[] alpha = new int[pixelCount];
+        int[] minimum = new int[Math.max(width, height)];
+        int[] division = new int[256 * divSum];
+        for (int i = 0; i < division.length; i++) division[i] = i / divSum;
+        int[][] stack = new int[div][4];
+
+        int pixelIndex = 0;
+        for (int y = 0; y < height; y++) {
+            int redIn = 0, greenIn = 0, blueIn = 0, alphaIn = 0;
+            int redOut = 0, greenOut = 0, blueOut = 0, alphaOut = 0;
+            int redSum = 0, greenSum = 0, blueSum = 0, alphaSum = 0;
+            for (int i = -radius; i <= radius; i++) {
+                int color = pixels[y * width + Math.min(widthMax, Math.max(i, 0))];
+                int[] entry = stack[i + radius];
+                entry[0] = (color >>> 16) & 255;
+                entry[1] = (color >>> 8) & 255;
+                entry[2] = color & 255;
+                entry[3] = (color >>> 24) & 255;
+                int weight = radiusPlusOne - Math.abs(i);
+                redSum += entry[0] * weight;
+                greenSum += entry[1] * weight;
+                blueSum += entry[2] * weight;
+                alphaSum += entry[3] * weight;
+                if (i > 0) {
+                    redIn += entry[0]; greenIn += entry[1]; blueIn += entry[2]; alphaIn += entry[3];
+                } else {
+                    redOut += entry[0]; greenOut += entry[1]; blueOut += entry[2]; alphaOut += entry[3];
                 }
             }
+            int stackPointer = radius;
             for (int x = 0; x < width; x++) {
-                long all = -radius * (long) horizontal[x];
-                long sum = horizontal[x] * (long) ((r1 * (r1 + 1)) >> 1);
-                for (int i = 1; i <= radius; i++) { sum += horizontal[i * width + x] * (long) (r1 - i); all += horizontal[i * width + x]; }
-                for (int y = 0; y < height; y++) {
-                    int value = (int) ((sum >> 6) & 255);
-                    output[y * width + x] |= value << shift;
-                    int start = y < r1 ? 0 : y - r1;
-                    int end = y < height - r1 ? y + r1 : height - 1;
-                    all += horizontal[start * width + x] - 2L * horizontal[y * width + x] + horizontal[end * width + x];
-                    sum += all;
-                }
+                red[pixelIndex] = division[redSum];
+                green[pixelIndex] = division[greenSum];
+                blue[pixelIndex] = division[blueSum];
+                alpha[pixelIndex] = division[alphaSum];
+                redSum -= redOut; greenSum -= greenOut; blueSum -= blueOut; alphaSum -= alphaOut;
+                int[] entry = stack[(stackPointer - radius + div) % div];
+                redOut -= entry[0]; greenOut -= entry[1]; blueOut -= entry[2]; alphaOut -= entry[3];
+                if (y == 0) minimum[x] = Math.min(x + radiusPlusOne, widthMax);
+                int color = pixels[y * width + minimum[x]];
+                entry[0] = (color >>> 16) & 255;
+                entry[1] = (color >>> 8) & 255;
+                entry[2] = color & 255;
+                entry[3] = (color >>> 24) & 255;
+                redIn += entry[0]; greenIn += entry[1]; blueIn += entry[2]; alphaIn += entry[3];
+                redSum += redIn; greenSum += greenIn; blueSum += blueIn; alphaSum += alphaIn;
+                stackPointer = (stackPointer + 1) % div;
+                entry = stack[stackPointer];
+                redOut += entry[0]; greenOut += entry[1]; blueOut += entry[2]; alphaOut += entry[3];
+                redIn -= entry[0]; greenIn -= entry[1]; blueIn -= entry[2]; alphaIn -= entry[3];
+                pixelIndex++;
             }
         }
-        bitmap.setPixels(output, 0, width, 0, 0, width, height);
+
+        for (int x = 0; x < width; x++) {
+            int redIn = 0, greenIn = 0, blueIn = 0, alphaIn = 0;
+            int redOut = 0, greenOut = 0, blueOut = 0, alphaOut = 0;
+            int redSum = 0, greenSum = 0, blueSum = 0, alphaSum = 0;
+            int yOffset = -radius * width;
+            for (int i = -radius; i <= radius; i++) {
+                int index = Math.max(0, yOffset) + x;
+                int[] entry = stack[i + radius];
+                entry[0] = red[index]; entry[1] = green[index]; entry[2] = blue[index]; entry[3] = alpha[index];
+                int weight = radiusPlusOne - Math.abs(i);
+                redSum += red[index] * weight;
+                greenSum += green[index] * weight;
+                blueSum += blue[index] * weight;
+                alphaSum += alpha[index] * weight;
+                if (i > 0) {
+                    redIn += entry[0]; greenIn += entry[1]; blueIn += entry[2]; alphaIn += entry[3];
+                } else {
+                    redOut += entry[0]; greenOut += entry[1]; blueOut += entry[2]; alphaOut += entry[3];
+                }
+                if (i < heightMax) yOffset += width;
+            }
+            int stackPointer = radius;
+            for (int y = 0; y < height; y++) {
+                pixels[y * width + x] = division[alphaSum] << 24
+                        | division[redSum] << 16 | division[greenSum] << 8 | division[blueSum];
+                redSum -= redOut; greenSum -= greenOut; blueSum -= blueOut; alphaSum -= alphaOut;
+                int[] entry = stack[(stackPointer - radius + div) % div];
+                redOut -= entry[0]; greenOut -= entry[1]; blueOut -= entry[2]; alphaOut -= entry[3];
+                if (x == 0) minimum[y] = Math.min(y + radiusPlusOne, heightMax) * width;
+                int index = x + minimum[y];
+                entry[0] = red[index]; entry[1] = green[index]; entry[2] = blue[index]; entry[3] = alpha[index];
+                redIn += entry[0]; greenIn += entry[1]; blueIn += entry[2]; alphaIn += entry[3];
+                redSum += redIn; greenSum += greenIn; blueSum += blueIn; alphaSum += alphaIn;
+                stackPointer = (stackPointer + 1) % div;
+                entry = stack[stackPointer];
+                redOut += entry[0]; greenOut += entry[1]; blueOut += entry[2]; alphaOut += entry[3];
+                redIn -= entry[0]; greenIn -= entry[1]; blueIn -= entry[2]; alphaIn -= entry[3];
+            }
+        }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
     }
 
     private static void check(boolean value, String operation, EGL10 egl) {

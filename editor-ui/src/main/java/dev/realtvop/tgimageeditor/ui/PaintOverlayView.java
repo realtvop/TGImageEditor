@@ -124,10 +124,10 @@ final class PaintOverlayView extends View {
     private void drawStroke(Canvas canvas, PaintStroke stroke) {
         if (stroke.kind() == PaintStroke.Kind.BLUR && blurredPreview != null) {
             PaintRenderer.drawBlurStroke(canvas, stroke, blurredPreview, imageBounds.width(), imageBounds.height(),
-                    Math.min(imageBounds.width(), imageBounds.height()));
+                    imageBounds.width());
         } else {
             PaintRenderer.drawStroke(canvas, stroke, imageBounds.width(), imageBounds.height(),
-                    Math.min(imageBounds.width(), imageBounds.height()));
+                    imageBounds.width());
         }
     }
 
