@@ -24,6 +24,8 @@ The following files match the corresponding path below `TMessagesProj/src/main/j
 
 The embedded `paint_radial_brush.webp`, `paint_elliptical_brush.webp`, and `paint_neon_brush.webp` payloads are byte-identical to the pinned Nekogram resources before Base64 wrapping.
 
+The editor chrome embeds the pinned xhdpi `media_crop`, `media_draw`, `media_settings`, `msg_photo_rotate`, `msg_photo_flip`, `msg_photo_settings`, `msg_photo_blur`, and `msg_photo_curve` WebP payloads without modifying their bytes.
+
 ## Standalone adapters
 
 `NekogramFilterPipeline` creates an offscreen EGL context and invokes the upstream filter passes in `FilterGLThread` order. `NekogramPaintPipeline` maps normalized edit-document strokes to the upstream renderer and shader set, owns offscreen textures, and ports the blur brush's one-eighth downsample plus native radius-8 `fastBlurMore` step.
@@ -32,6 +34,6 @@ Small classes under `org.telegram.messenger`, `org.telegram.ui`, and `org.telegr
 
 ## Independent application code
 
-The document model, EXIF decoder, crop renderer and interaction, text renderer and interaction, lifecycle/history layer, MediaStore export, share flow, gallery query/thumbnail loader, action bar shell, and live Canvas paint feedback are standalone code. The gallery uses the reference four-column compact layout and omits the camera cell, but it does not copy Telegram's picker runtime.
+The document model, EXIF decoder, crop renderer and interaction, text renderer and interaction, lifecycle/history layer, MediaStore export, share flow, gallery query/thumbnail loader, action bar shell, and live Canvas paint feedback are standalone code. The gallery uses the reference three-column portrait layout and omits the camera cell, but it does not copy Telegram's picker runtime.
 
 Run `./scripts/test-editor.sh` to compile, lint, test the model, and verify the four byte-identical Java sources against a local Nekogram checkout when it is available at `../Nekogram`.

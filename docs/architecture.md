@@ -26,7 +26,7 @@ The same `ImagePipeline` renders committed previews, history navigation, restore
 
 `editor-ui` converts gestures and controls into normalized model values. Coordinates stay in `[0, 1]`, allowing the engine to replay an edit at another resolution. It reuses the extracted `PhotoEditorSeekBar` and `PhotoFilterBlurControl`; crop, paint gesture capture, and text interaction are standalone views. It may call engine drawing helpers for live previews, but it does not own source decoding, export, MediaStore, or lifecycle state.
 
-`app` owns Android integration. It opens `GalleryPickerActivity` on launch, queries the local `MediaStore` image collection into a full-screen four-column grid, deliberately omits Nekogram's camera cell, and hands one selected content URI to `MainActivity`. It keeps at most 30 previous document snapshots, serializes the active document into an internal cache file for Activity recreation, and relies on scoped media permission for picker reads.
+`app` owns Android integration. It opens `GalleryPickerActivity` on launch, queries the local `MediaStore` image collection into a full-screen three-column grid, deliberately omits Nekogram's camera cell, and hands one selected content URI to `MainActivity`. It keeps at most 30 previous document snapshots, serializes the active document into an internal cache file for Activity recreation, and relies on scoped media permission for picker reads.
 
 ## Extraction boundary
 

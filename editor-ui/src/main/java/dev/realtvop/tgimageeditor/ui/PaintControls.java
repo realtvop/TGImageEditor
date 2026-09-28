@@ -1,19 +1,26 @@
 package dev.realtvop.tgimageeditor.ui;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
-import android.widget.HorizontalScrollView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.SeekBar;
+import android.widget.TextView;
 
 import java.util.function.Consumer;
 
 import dev.realtvop.tgimageeditor.model.PaintStroke;
 
-public final class PaintControls extends LinearLayout {
+/** Trimmed LPhotoPaintView chrome: brush strip, selection halo, tabs, cancel and done. */
+public final class PaintControls extends FrameLayout {
     public static final class BrushSpec {
         public final PaintStroke.Kind kind;
         public final int color;
@@ -26,68 +33,60 @@ public final class PaintControls extends LinearLayout {
         }
     }
 
+    private static final int[] COLORS = {Color.WHITE, 0xffff453a, 0xffffcc00, 0xff30d158, 0xff0a84ff, 0xffbf5af2};
     private PaintStroke.Kind kind = PaintStroke.Kind.PEN;
-    private int color = Color.WHITE;
+    private int colorIndex;
     private float width = .012f;
     private Consumer<BrushSpec> listener;
     private Runnable textRequestListener;
+    private final LinearLayout tools;
+    private final TextView drawTab;
+    private final TextView textTab;
+    private BrushButton selected;
 
     public PaintControls(Context context) {
         super(context);
-        setOrientation(VERTICAL);
-        setPadding(dp(8), dp(4), dp(8), dp(4));
-        setBackgroundColor(0xE62B2B2F);
+        setPadding(dp(8), dp(8), dp(8), 0);
+        setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x00000000, 0x80000000, 0xff000000}));
 
-        HorizontalScrollView scroll = new HorizontalScrollView(context);
-        scroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout tools = new LinearLayout(context);
-        addTool(tools, R.string.paint_pen, PaintStroke.Kind.PEN);
-        addTool(tools, R.string.paint_marker, PaintStroke.Kind.MARKER);
-        addTool(tools, R.string.paint_neon, PaintStroke.Kind.NEON);
-        addTool(tools, R.string.paint_blur, PaintStroke.Kind.BLUR);
-        addTool(tools, R.string.paint_eraser, PaintStroke.Kind.ERASER);
-        addTool(tools, R.string.paint_arrow, PaintStroke.Kind.ARROW);
-        addTool(tools, R.string.paint_rectangle, PaintStroke.Kind.RECTANGLE);
-        addTool(tools, R.string.paint_oval, PaintStroke.Kind.OVAL);
-        Button text = new Button(context);
-        text.setText(R.string.paint_text);
-        styleButton(text);
-        text.setOnClickListener(v -> {
+        tools = new LinearLayout(context);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        tools.setPadding(dp(16), 0, dp(16), 0);
+        addView(tools, frame(-1, 48, Gravity.TOP));
+        tools.addView(colorButton(), weighted());
+        addBrush(PaintStroke.Kind.PEN);
+        addBrush(PaintStroke.Kind.ARROW);
+        addBrush(PaintStroke.Kind.MARKER);
+        addBrush(PaintStroke.Kind.NEON);
+        addBrush(PaintStroke.Kind.BLUR);
+        addBrush(PaintStroke.Kind.ERASER);
+        TextView add = symbol("+");
+        add.setOnClickListener(v -> showShapes());
+        tools.addView(add, weighted());
+
+        LinearLayout tabs = new LinearLayout(context);
+        tabs.setPadding(dp(52), 0, dp(52), 0);
+        addView(tabs, frame(-1, 40, Gravity.BOTTOM));
+        drawTab = tab(R.string.paint_draw_tab);
+        textTab = tab(R.string.paint_text_tab);
+        tabs.addView(drawTab, new LinearLayout.LayoutParams(0, -1, 1f));
+        tabs.addView(textTab, new LinearLayout.LayoutParams(0, -1, 1f));
+        drawTab.setOnClickListener(v -> selectTab(false));
+        textTab.setOnClickListener(v -> {
+            selectTab(true);
             if (textRequestListener != null) textRequestListener.run();
         });
-        tools.addView(text);
-        scroll.addView(tools);
-        addView(scroll, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        LinearLayout options = new LinearLayout(context);
-        options.setGravity(Gravity.CENTER_VERTICAL);
-        int[] colors = {Color.WHITE, 0xffef5350, 0xffffca28, 0xff66bb6a, 0xff42a5f5, 0xffab47bc};
-        for (int value : colors) {
-            Button button = new Button(context);
-            button.setText("●");
-            button.setTextColor(value);
-            button.setTextSize(22);
-            styleButton(button);
-            button.setMinWidth(dp(40));
-            button.setOnClickListener(v -> {
-                color = value;
-                notifyChanged();
-            });
-            options.addView(button, new LayoutParams(dp(44), dp(44)));
-        }
-        SeekBar weight = new SeekBar(context);
-        weight.setMax(100);
-        weight.setProgress(25);
-        weight.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                width = .004f + progress / 100f * .05f;
-                notifyChanged();
-            }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-        options.addView(weight, new LayoutParams(0, dp(44), 1f));
-        addView(options, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        TextView cancel = symbol("×");
+        cancel.setTextSize(28);
+        addView(cancel, frame(40, 40, Gravity.BOTTOM | Gravity.LEFT));
+        TextView done = symbol("✓");
+        done.setTextSize(24);
+        addView(done, frame(40, 40, Gravity.BOTTOM | Gravity.RIGHT));
+        cancel.setTag("cancel");
+        done.setTag("done");
+        selectTab(false);
     }
 
     public void setListener(Consumer<BrushSpec> listener) {
@@ -95,35 +94,140 @@ public final class PaintControls extends LinearLayout {
         notifyChanged();
     }
 
-    public void setTextRequestListener(Runnable listener) {
-        textRequestListener = listener;
+    public void setTextRequestListener(Runnable listener) { textRequestListener = listener; }
+
+    public void setActions(Runnable cancel, Runnable done) {
+        findViewWithTag("cancel").setOnClickListener(v -> cancel.run());
+        findViewWithTag("done").setOnClickListener(v -> done.run());
     }
 
-    private void addTool(LinearLayout parent, int title, PaintStroke.Kind value) {
-        Button button = new Button(getContext());
-        button.setText(title);
-        styleButton(button);
-        button.setOnClickListener(v -> {
-            kind = value;
+    private View colorButton() {
+        View view = new View(getContext()) {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override protected void onDraw(Canvas canvas) {
+                float radius = Math.min(getWidth(), getHeight()) / 2f - dp(8);
+                paint.setColor(COLORS[colorIndex]);
+                paint.setStyle(Paint.Style.FILL);
+                canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(2));
+                paint.setColor(Color.WHITE);
+                canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, paint);
+            }
+        };
+        view.setOnClickListener(v -> {
+            colorIndex = (colorIndex + 1) % COLORS.length;
+            v.invalidate();
             notifyChanged();
         });
-        parent.addView(button);
+        return view;
+    }
+
+    private void addBrush(PaintStroke.Kind value) {
+        BrushButton button = new BrushButton(getContext(), value);
+        button.setOnClickListener(v -> selectBrush(button));
+        tools.addView(button, weighted());
+        if (value == PaintStroke.Kind.PEN) selectBrush(button);
+    }
+
+    private void selectBrush(BrushButton button) {
+        if (selected != null) selected.setSelected(false);
+        selected = button;
+        selected.setSelected(true);
+        kind = button.kind;
+        width = kind == PaintStroke.Kind.MARKER ? .018f : kind == PaintStroke.Kind.ERASER || kind == PaintStroke.Kind.BLUR ? .024f : .012f;
+        selectTab(false);
+        notifyChanged();
+    }
+
+    private void showShapes() {
+        String[] names = {getContext().getString(R.string.paint_arrow), getContext().getString(R.string.paint_rectangle), getContext().getString(R.string.paint_oval)};
+        PaintStroke.Kind[] values = {PaintStroke.Kind.ARROW, PaintStroke.Kind.RECTANGLE, PaintStroke.Kind.OVAL};
+        new AlertDialog.Builder(getContext()).setItems(names, (dialog, which) -> {
+            kind = values[which];
+            selectTab(false);
+            notifyChanged();
+        }).show();
+    }
+
+    private void selectTab(boolean text) {
+        drawTab.setAlpha(text ? .6f : 1f);
+        textTab.setAlpha(text ? 1f : .6f);
     }
 
     private void notifyChanged() {
-        if (listener != null) listener.accept(new BrushSpec(kind, color, width));
+        if (listener != null) listener.accept(new BrushSpec(kind, COLORS[colorIndex], width));
     }
 
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+    private TextView tab(int label) {
+        TextView view = new TextView(getContext());
+        view.setText(label);
+        view.setAllCaps(true);
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(14);
+        view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        view.setGravity(Gravity.CENTER);
+        return view;
     }
 
-    private void styleButton(Button button) {
-        button.setAllCaps(false);
-        button.setTextSize(13);
-        button.setMinHeight(dp(44));
-        button.setMinWidth(dp(76));
-        button.setPadding(dp(8), 0, dp(8), 0);
-        button.setBackgroundColor(0x002B2B2F);
+    private TextView symbol(String value) {
+        TextView view = new TextView(getContext());
+        view.setText(value);
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(22);
+        view.setGravity(Gravity.CENTER);
+        return view;
+    }
+
+    private LinearLayout.LayoutParams weighted() { return new LinearLayout.LayoutParams(0, dp(40), 1f); }
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private FrameLayout.LayoutParams frame(int width, int height, int gravity) {
+        return new FrameLayout.LayoutParams(width < 0 ? width : dp(width), height < 0 ? height : dp(height), gravity);
+    }
+
+    private final class BrushButton extends View {
+        final PaintStroke.Kind kind;
+        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Path path = new Path();
+
+        BrushButton(Context context, PaintStroke.Kind kind) {
+            super(context);
+            this.kind = kind;
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            float cx = getWidth() / 2f, cy = getHeight() / 2f;
+            if (isSelected()) {
+                paint.setColor(0x30ffffff);
+                paint.setStyle(Paint.Style.FILL);
+                canvas.drawCircle(cx, cy, dp(17), paint);
+            }
+            paint.setColor(Color.WHITE);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setStrokeWidth(dp(kind == PaintStroke.Kind.MARKER ? 5 : 3));
+            path.rewind();
+            if (kind == PaintStroke.Kind.ERASER) {
+                RectF rect = new RectF(cx - dp(8), cy - dp(6), cx + dp(8), cy + dp(6));
+                canvas.save(); canvas.rotate(-35, cx, cy); canvas.drawRoundRect(rect, dp(2), dp(2), paint); canvas.restore();
+            } else if (kind == PaintStroke.Kind.ARROW) {
+                canvas.drawLine(cx - dp(9), cy + dp(7), cx + dp(8), cy - dp(7), paint);
+                canvas.drawLine(cx + dp(8), cy - dp(7), cx + dp(1), cy - dp(7), paint);
+                canvas.drawLine(cx + dp(8), cy - dp(7), cx + dp(7), cy, paint);
+            } else if (kind == PaintStroke.Kind.BLUR) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setAlpha(150);
+                canvas.drawCircle(cx, cy, dp(9), paint);
+                paint.setAlpha(255);
+            } else {
+                path.moveTo(cx - dp(8), cy + dp(8));
+                path.quadTo(cx, cy - dp(9), cx + dp(9), cy - dp(6));
+                canvas.drawPath(path, paint);
+                if (kind == PaintStroke.Kind.NEON) {
+                    paint.setStrokeWidth(dp(7)); paint.setAlpha(80); canvas.drawPath(path, paint); paint.setAlpha(255);
+                }
+            }
+        }
     }
 }

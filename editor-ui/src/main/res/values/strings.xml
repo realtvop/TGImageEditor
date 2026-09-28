@@ -1,4 +1,7 @@
 <resources>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_done">Done</string>
+    <string name="crop_reset">Reset</string>
     <string name="paint_pen">Pen</string>
     <string name="paint_marker">Marker</string>
     <string name="paint_neon">Neon</string>
@@ -8,6 +11,8 @@
     <string name="paint_rectangle">Rectangle</string>
     <string name="paint_oval">Oval</string>
     <string name="paint_text">Text</string>
+    <string name="paint_draw_tab">Draw</string>
+    <string name="paint_text_tab">Text</string>
     <string name="filter_enhance">Enhance</string>
     <string name="filter_skin">Skin</string>
     <string name="filter_exposure">Exposure</string>

@@ -53,6 +53,12 @@ public final class NekogramActionBar extends FrameLayout {
     public void setBackAction(OnClickListener listener) { back.setOnClickListener(listener); }
     public void setBackEnabled(boolean enabled) { back.setEnabled(enabled); back.setAlpha(enabled ? 1f : .5f); }
     public void setActionEnabled(boolean enabled) { action.setEnabled(enabled); action.setAlpha(enabled ? 1f : .5f); }
+    public void setPhotoViewerMode() {
+        setBackgroundColor(0xcc000000);
+        back.setColor(0xffffffff);
+        title.setTextColor(0xffffffff);
+        action.setTextColor(0xff51bdf3);
+    }
 
     private static LayoutParams params(int width, int height, int gravity) {
         LayoutParams params = new LayoutParams(width, height, gravity);
@@ -82,6 +88,7 @@ public final class NekogramActionBar extends FrameLayout {
             canvas.drawLine(cx + dp(getContext(), 7), cy - dp(getContext(), 7), cx, cy, paint);
             canvas.drawLine(cx, cy, cx + dp(getContext(), 7), cy + dp(getContext(), 7), paint);
         }
+        void setColor(int color) { paint.setColor(color); invalidate(); }
         private static int dp(Context context, float value) {
             return Math.round(value * context.getResources().getDisplayMetrics().density);
         }

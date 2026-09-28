@@ -8,7 +8,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -82,7 +84,7 @@ public final class GalleryPickerActivity extends Activity {
 
         FrameLayout content = new FrameLayout(this);
         grid = new GridView(this);
-        grid.setNumColumns(4);
+        grid.setNumColumns(3);
         grid.setHorizontalSpacing(dp(2));
         grid.setVerticalSpacing(dp(2));
         grid.setPadding(dp(2), dp(2), dp(2), dp(2));
@@ -196,7 +198,7 @@ public final class GalleryPickerActivity extends Activity {
             this.context = context;
             this.items = items;
             int width = context.getResources().getDisplayMetrics().widthPixels;
-            tileSize = Math.max(1, (width - dp(context, 10)) / 4);
+            tileSize = Math.max(1, (width - dp(context, 8)) / 3);
         }
 
         @Override public int getCount() { return items.size(); }
@@ -205,10 +207,10 @@ public final class GalleryPickerActivity extends Activity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            ImageView image = convertView instanceof ImageView ? (ImageView) convertView : new ImageView(context);
+            PhotoCell cell = convertView instanceof PhotoCell ? (PhotoCell) convertView : new PhotoCell(context, tileSize);
+            ImageView image = cell.image;
             image.setScaleType(ImageView.ScaleType.CENTER_CROP);
             image.setBackground(new ColorDrawable(NekogramColors.surfaceContainer(context)));
-            image.setLayoutParams(new AbsListView.LayoutParams(-1, tileSize));
             Photo photo = items.get(position);
             String key = photo.uri.toString();
             image.setTag(key);
@@ -223,7 +225,7 @@ public final class GalleryPickerActivity extends Activity {
                     });
                 });
             }
-            return image;
+            return cell;
         }
 
         void shutdown() {
@@ -243,6 +245,40 @@ public final class GalleryPickerActivity extends Activity {
         }
 
         private static int dp(Context context, int value) {
+            return Math.round(value * context.getResources().getDisplayMetrics().density);
+        }
+    }
+
+    private static final class PhotoCell extends FrameLayout {
+        final ImageView image;
+
+        PhotoCell(Context context, int size) {
+            super(context);
+            setLayoutParams(new AbsListView.LayoutParams(-1, size));
+            image = new ImageView(context);
+            addView(image, new FrameLayout.LayoutParams(-1, -1));
+            View check = new View(context) {
+                private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+                {
+                    fill.setColor(0x66000000);
+                    stroke.setColor(Color.WHITE);
+                    stroke.setStyle(Paint.Style.STROKE);
+                    stroke.setStrokeWidth(px(context, 2));
+                }
+                @Override protected void onDraw(Canvas canvas) {
+                    float r = Math.min(getWidth(), getHeight()) / 2f - px(context, 2);
+                    canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, r, fill);
+                    canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, r, stroke);
+                }
+            };
+            FrameLayout.LayoutParams checkParams = new FrameLayout.LayoutParams(px(context, 30), px(context, 30), Gravity.TOP | Gravity.RIGHT);
+            checkParams.topMargin = px(context, 4);
+            checkParams.rightMargin = px(context, 4);
+            addView(check, checkParams);
+        }
+
+        private static int px(Context context, int value) {
             return Math.round(value * context.getResources().getDisplayMetrics().density);
         }
     }

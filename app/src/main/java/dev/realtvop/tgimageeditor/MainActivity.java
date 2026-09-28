@@ -7,6 +7,8 @@ import android.content.ContentValues;
 import android.content.ClipData;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,9 +17,8 @@ import android.provider.MediaStore;
 import android.content.pm.PackageManager;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import android.widget.EditText;
@@ -52,6 +53,7 @@ import dev.realtvop.tgimageeditor.ui.FilterControls;
 import dev.realtvop.tgimageeditor.ui.PaintControls;
 import dev.realtvop.tgimageeditor.ui.CropControls;
 import dev.realtvop.tgimageeditor.nekogram.NekogramActionBar;
+import dev.realtvop.tgimageeditor.nekogram.NekogramEditorIcons;
 
 public final class MainActivity extends Activity {
     private static final String STATE_DOCUMENT_PATH = "editor_document_path";
@@ -64,17 +66,13 @@ public final class MainActivity extends Activity {
     private EditorView editorView;
     private LinearLayout actions;
     private NekogramActionBar topBar;
-    private Button shareButton;
-    private Button cropButton;
-    private Button filterButton;
-    private Button paintButton;
-    private Button documentUndoButton;
-    private Button documentRedoButton;
-    private Button rotateButton;
-    private Button mirrorButton;
-    private Button cancelButton;
-    private Button doneButton;
-    private Button undoButton;
+    private View shareButton;
+    private View cropButton;
+    private View filterButton;
+    private View paintButton;
+    private View documentUndoButton;
+    private View documentRedoButton;
+    private View paintUndoButton;
     private Bitmap bitmap;
     private Bitmap renderedBitmap;
     private Bitmap cropSurfaceBitmap;
@@ -123,97 +121,95 @@ public final class MainActivity extends Activity {
 
         filterControls = new FilterControls(this);
         filterControls.setVisibility(View.GONE);
-        FrameLayout.LayoutParams filterParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        filterParams.bottomMargin = dp(64);
+        filterControls.setActions(() -> finishTool(false), () -> finishTool(true));
+        FrameLayout.LayoutParams filterParams = new FrameLayout.LayoutParams(-1, dp(186), Gravity.BOTTOM);
         root.addView(filterControls, filterParams);
 
         paintControls = new PaintControls(this);
         paintControls.setVisibility(View.GONE);
         paintControls.setListener(brush -> editorView.setPaintBrush(brush));
         paintControls.setTextRequestListener(this::requestText);
-        FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        paintParams.bottomMargin = dp(64);
+        paintControls.setActions(() -> finishTool(false), () -> finishTool(true));
+        FrameLayout.LayoutParams paintParams = new FrameLayout.LayoutParams(-1, dp(104), Gravity.BOTTOM);
         root.addView(paintControls, paintParams);
 
         cropControls = new CropControls(this);
         cropControls.setVisibility(View.GONE);
-        FrameLayout.LayoutParams cropParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        cropParams.bottomMargin = dp(64);
+        cropControls.setActions(() -> finishTool(false), () -> finishTool(true));
+        FrameLayout.LayoutParams cropParams = new FrameLayout.LayoutParams(-1, dp(112), Gravity.BOTTOM);
         root.addView(cropControls, cropParams);
 
         actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
-        actions.setPadding(dp(12), dp(8), dp(12), dp(8));
-        actions.setBackgroundColor(0xff2b2b2f);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(dp(2), 0, dp(2), 0);
+        GradientDrawable toolBackground = new GradientDrawable();
+        toolBackground.setColor(0xcc1a1a1a);
+        toolBackground.setCornerRadius(dp(22));
+        actions.setBackground(toolBackground);
 
-        cropButton = actionButton(R.string.action_crop, v -> beginCrop());
+        cropButton = iconAction(NekogramEditorIcons.Icon.CROP, v -> beginCrop());
         cropButton.setEnabled(false);
-        actions.addView(cropButton);
+        actions.addView(cropButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        filterButton = actionButton(R.string.action_adjust, v -> beginFilter());
-        filterButton.setEnabled(false);
-        actions.addView(filterButton);
-
-        paintButton = actionButton(R.string.action_draw, v -> beginPaint());
+        paintButton = iconAction(NekogramEditorIcons.Icon.DRAW, v -> beginPaint());
         paintButton.setEnabled(false);
-        actions.addView(paintButton);
+        actions.addView(paintButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        documentUndoButton = actionButton(R.string.action_undo, v -> navigateHistory(true));
+        filterButton = iconAction(NekogramEditorIcons.Icon.ADJUST, v -> beginFilter());
+        filterButton.setEnabled(false);
+        actions.addView(filterButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        documentUndoButton = symbolAction("↶", v -> navigateHistory(true));
         documentUndoButton.setEnabled(false);
-        actions.addView(documentUndoButton);
+        actions.addView(documentUndoButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        documentRedoButton = actionButton(R.string.action_redo, v -> navigateHistory(false));
+        documentRedoButton = symbolAction("↷", v -> navigateHistory(false));
         documentRedoButton.setEnabled(false);
-        actions.addView(documentRedoButton);
+        actions.addView(documentRedoButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        shareButton = actionButton(R.string.action_share, v -> shareCopy());
+        shareButton = symbolAction("↗", v -> shareCopy());
         shareButton.setEnabled(false);
-        actions.addView(shareButton);
-
-        rotateButton = actionButton(R.string.action_rotate, v -> updateCrop(pendingCrop.rotateClockwise()));
-        mirrorButton = actionButton(R.string.action_mirror, v -> updateCrop(pendingCrop.toggleMirror()));
-        cancelButton = actionButton(R.string.action_cancel, v -> finishTool(false));
-        doneButton = actionButton(R.string.action_done, v -> finishTool(true));
-        undoButton = actionButton(R.string.action_undo, v -> editorView.undoPaint());
-        actions.addView(rotateButton);
-        actions.addView(mirrorButton);
-        actions.addView(cancelButton);
-        actions.addView(doneButton);
-        actions.addView(undoButton);
-        setToolActionsVisible(false);
+        actions.addView(shareButton, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         topBar = new NekogramActionBar(this);
+        topBar.setPhotoViewerMode();
         topBar.setTitle(getString(R.string.app_name));
         topBar.setBackAction(v -> openImage());
         topBar.setAction(getString(R.string.action_save_copy), v -> saveCopy());
         topBar.setActionEnabled(false);
         root.addView(topBar, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
 
-        HorizontalScrollView actionScroller = new HorizontalScrollView(this);
-        actionScroller.setHorizontalScrollBarEnabled(false);
-        actionScroller.addView(actions, new HorizontalScrollView.LayoutParams(-2, -2));
-        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        root.addView(actionScroller, actionParams);
+        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(-2, dp(48), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        actionParams.bottomMargin = dp(8);
+        root.addView(actions, actionParams);
+
+        paintUndoButton = symbolAction("↶", v -> editorView.undoPaint());
+        paintUndoButton.setVisibility(View.GONE);
+        FrameLayout.LayoutParams undoParams = new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
+        undoParams.leftMargin = dp(8);
+        undoParams.topMargin = dp(8);
+        root.addView(paintUndoButton, undoParams);
         return root;
     }
 
-    private Button actionButton(int label, View.OnClickListener listener) {
-        Button button = new Button(this);
-        button.setText(label);
-        styleAction(button);
-        button.setOnClickListener(listener);
-        return button;
+    private ImageView iconAction(NekogramEditorIcons.Icon icon, View.OnClickListener listener) {
+        ImageView view = new ImageView(this);
+        view.setScaleType(ImageView.ScaleType.CENTER);
+        view.setImageDrawable(NekogramEditorIcons.drawable(this, icon));
+        view.setOnClickListener(listener);
+        return view;
     }
 
-    private void styleAction(Button button) {
-        button.setAllCaps(false);
-        button.setTextColor(0xffffffff);
-        button.setTextSize(14);
-        button.setMinHeight(dp(44));
-        button.setMinWidth(dp(72));
-        button.setPadding(dp(10), 0, dp(10), 0);
-        button.setBackgroundColor(0x002b2b2f);
+    private TextView symbolAction(String symbol, View.OnClickListener listener) {
+        TextView view = new TextView(this);
+        view.setText(symbol);
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(22);
+        view.setGravity(Gravity.CENTER);
+        view.setOnClickListener(listener);
+        return view;
     }
 
     private void openImage() {
@@ -458,7 +454,7 @@ public final class MainActivity extends Activity {
         filterControls.setState(filter);
         editorView.updateBlur(filter.blur());
         filterPreviewBitmap = null;
-        doneButton.setEnabled(false);
+        filterControls.setDoneEnabled(false);
         filterGeneration++;
         mainHandler.removeCallbacks(renderFilter);
         mainHandler.postDelayed(renderFilter, 50);
@@ -480,7 +476,7 @@ public final class MainActivity extends Activity {
                 Bitmap previous = filterPreviewBitmap;
                 filterPreviewBitmap = result;
                 editorView.setBitmap(result);
-                doneButton.setEnabled(true);
+                filterControls.setDoneEnabled(true);
                 if (previous != null && previous != renderedBitmap && previous != base && previous != result) {
                     previous.recycle();
                 }
@@ -519,15 +515,10 @@ public final class MainActivity extends Activity {
     }
 
     private void setToolActionsVisible(boolean editing) {
-        int normalVisibility = editing ? View.GONE : View.VISIBLE;
-        for (int index = 0; index < 6; index++) actions.getChildAt(index).setVisibility(normalVisibility);
-        boolean crop = editing && activeTool == Tool.CROP;
-        rotateButton.setVisibility(crop ? View.VISIBLE : View.GONE);
-        mirrorButton.setVisibility(crop ? View.VISIBLE : View.GONE);
-        cancelButton.setVisibility(editing ? View.VISIBLE : View.GONE);
-        doneButton.setVisibility(editing ? View.VISIBLE : View.GONE);
-        undoButton.setVisibility(editing && activeTool == Tool.PAINT ? View.VISIBLE : View.GONE);
-        doneButton.setEnabled(true);
+        actions.setVisibility(editing ? View.GONE : View.VISIBLE);
+        topBar.setVisibility(editing ? View.GONE : View.VISIBLE);
+        paintUndoButton.setVisibility(editing && activeTool == Tool.PAINT ? View.VISIBLE : View.GONE);
+        filterControls.setDoneEnabled(true);
     }
 
     private void beginPaint() {

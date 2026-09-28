@@ -4,7 +4,7 @@ TGImageEditor is an offline, static-image Android editor extracted from Nekogram
 
 ## Features
 
-- Opens directly into a full-screen four-column local gallery grid, without a camera tile, and normalizes every EXIF orientation.
+- Opens directly into a full-screen three-column local gallery grid, without a camera tile, and normalizes every EXIF orientation.
 - Non-destructive free crop, common aspect ratios, 90-degree rotation, mirror, and ±45-degree straightening.
 - Enhance, exposure, contrast, saturation, warmth, fade, highlights, shadows, vignette, grain, sharpen, skin softening, five-point luminance curve, and radial or linear focus blur.
 - Pen, marker, neon, blur brush, eraser, arrow, rectangle, and oval tools with color and width controls.
