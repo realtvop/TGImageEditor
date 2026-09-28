@@ -43,6 +43,7 @@ public final class PaintControls extends FrameLayout {
     private final TextView drawTab;
     private final TextView textTab;
     private BrushButton selected;
+    private BrushButton defaultBrush;
 
     public PaintControls(Context context) {
         super(context);
@@ -86,7 +87,7 @@ public final class PaintControls extends FrameLayout {
         addView(done, frame(40, 40, Gravity.BOTTOM | Gravity.RIGHT));
         cancel.setTag("cancel");
         done.setTag("done");
-        selectTab(false);
+        selectBrush(defaultBrush);
     }
 
     public void setListener(Consumer<BrushSpec> listener) {
@@ -127,7 +128,7 @@ public final class PaintControls extends FrameLayout {
         BrushButton button = new BrushButton(getContext(), value);
         button.setOnClickListener(v -> selectBrush(button));
         tools.addView(button, weighted());
-        if (value == PaintStroke.Kind.PEN) selectBrush(button);
+        if (value == PaintStroke.Kind.PEN) defaultBrush = button;
     }
 
     private void selectBrush(BrushButton button) {
